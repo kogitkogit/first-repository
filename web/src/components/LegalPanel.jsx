@@ -1,0 +1,257 @@
+﻿import { useEffect, useMemo, useState } from "react";
+import api from "../api/client";
+
+const DEFAULT_FORM = {
+  insurance_company: "",
+  insurance_number: "",
+  insurance_expiry: "",
+  insurance_fee: "",
+  tax_year: "",
+  tax_amount: "",
+  tax_due_date: "",
+  tax_paid: false,
+  inspection_center: "",
+  inspection_date: "",
+  next_inspection_date: "",
+  inspection_result: "",
+  registration_number: "",
+  registration_office: "",
+  registration_date: "",
+  registration_type: "",
+  memo: "",
+};
+
+const TABS = [
+  { key: "insurance", label: "보험", icon: "verified_user", description: "보험 증권과 만기 정보를 관리하세요." },
+  { key: "tax", label: "자동차세", icon: "receipt_long", description: "자동차세 부과·납부 내역을 기록합니다." },
+  { key: "inspection", label: "정기검사", icon: "assignment_turned_in", description: "검사 일정과 결과를 추적하세요." },
+  { key: "registration", label: "차량 등록", icon: "badge", description: "등록증 정보를 최신 상태로 유지하세요." },
+  { key: "memo", label: "메모", icon: "edit_note", description: "추가로 메모할 내용을 남겨주세요." },
+];
+
+const SectionCard = ({ title, description, icon, children }) => (
+  <section className="rounded-2xl border border-border-light bg-surface-light shadow-card">
+    <header className="flex items-center gap-3 border-b border-border-light px-5 py-4">
+      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <span className="material-symbols-outlined text-xl">{icon}</span>
+      </span>
+      <div>
+        <h2 className="text-base font-semibold text-text-light">{title}</h2>
+        <p className="text-sm text-subtext-light">{description}</p>
+      </div>
+    </header>
+    <div className="space-y-4 px-5 py-5">{children}</div>
+  </section>
+);
+
+const InputField = ({ label, value, onChange, type = "text", placeholder }) => (
+  <label className="flex flex-col gap-2">
+    <span className="text-sm font-semibold text-text-light">{label}</span>
+    <input
+      value={value ?? ""}
+      onChange={(e) => onChange(e.target.value)}
+      type={type}
+      placeholder={placeholder}
+      className="h-11 rounded-xl border border-border-light bg-background-light px-3 text-sm text-text-light shadow-inner focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+    />
+  </label>
+);
+
+export default function LegalPanel({ vehicle }) {
+  const [tab, setTab] = useState("insurance");
+  const [form, setForm] = useState(DEFAULT_FORM);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [messageTone, setMessageTone] = useState("success");
+
+  useEffect(() => {
+    if (!vehicle) {
+      setForm(DEFAULT_FORM);
+      return;
+    }
+    api
+      .get("/legal/list", { params: { vehicleId: vehicle.id } })
+      .then((res) => {
+        if (Array.isArray(res.data) && res.data.length > 0) {
+          setForm({ ...DEFAULT_FORM, ...res.data[0] });
+        } else {
+          setForm(DEFAULT_FORM);
+        }
+      })
+      .catch(() => {
+        setMessageTone("error");
+        setMessage("법적 정보를 불러오지 못했습니다.");
+        setTimeout(() => setMessage(""), 2500);
+      });
+  }, [vehicle]);
+
+  const sectionMeta = useMemo(() => TABS.find((item) => item.key === tab) ?? TABS[0], [tab]);
+
+  const updateField = (key, value) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const saveData = async () => {
+    if (!vehicle) {
+      setMessageTone("error");
+      setMessage("차량을 먼저 선택해주세요.");
+      setTimeout(() => setMessage(""), 2000);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const payload = {
+        ...form,
+        user_id: vehicle.user_id ?? vehicle.userId ?? null,
+        vehicle_id: vehicle.id,
+        tax_paid: Boolean(form.tax_paid),
+      };
+      if (payload.id) {
+        await api.put(`/legal/update/${payload.id}`, payload);
+      } else {
+        await api.post(`/legal/add`, payload);
+      }
+      setMessageTone("success");
+      setMessage("법적 정보가 저장되었습니다.");
+    } catch (error) {
+      setMessageTone("error");
+      setMessage("저장 중 문제가 발생했습니다. 다시 시도해주세요.");
+    } finally {
+      setLoading(false);
+      setTimeout(() => setMessage(""), 2500);
+    }
+  };
+
+  const renderInsurance = () => (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <InputField label="보험사" value={form.insurance_company} onChange={(v) => updateField("insurance_company", v)} placeholder="예: 현대해상" />
+      <InputField label="증권 번호" value={form.insurance_number} onChange={(v) => updateField("insurance_number", v)} placeholder="예: ABC-123456" />
+      <InputField label="만기일" type="date" value={form.insurance_expiry} onChange={(v) => updateField("insurance_expiry", v)} />
+      <InputField label="보험료 (₩)" type="number" value={form.insurance_fee} onChange={(v) => updateField("insurance_fee", v)} placeholder="예: 350000" />
+    </div>
+  );
+
+  const renderTax = () => (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <InputField label="과세 연도" type="number" value={form.tax_year} onChange={(v) => updateField("tax_year", v)} placeholder="예: 2025" />
+      <InputField label="세액 (₩)" type="number" value={form.tax_amount} onChange={(v) => updateField("tax_amount", v)} placeholder="예: 250000" />
+      <InputField label="납부 기한" type="date" value={form.tax_due_date} onChange={(v) => updateField("tax_due_date", v)} />
+      <label className="flex h-11 items-center justify-between rounded-xl border border-border-light bg-background-light px-4 text-sm">
+        <span className="font-semibold text-text-light">납부 완료</span>
+        <span className="relative inline-flex items-center">
+          <input
+            type="checkbox"
+            className="peer h-5 w-10 cursor-pointer appearance-none rounded-full border border-border-light bg-surface-light transition checked:bg-primary"
+            checked={Boolean(form.tax_paid)}
+            onChange={(e) => updateField("tax_paid", e.target.checked)}
+          />
+          <span className="pointer-events-none absolute left-1 top-1 h-3 w-3 rounded-full bg-border-light transition peer-checked:translate-x-5 peer-checked:bg-white" />
+        </span>
+      </label>
+    </div>
+  );
+
+  const renderInspection = () => (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <InputField label="검사소" value={form.inspection_center} onChange={(v) => updateField("inspection_center", v)} placeholder="예: 강남 검사소" />
+      <InputField label="검사일" type="date" value={form.inspection_date} onChange={(v) => updateField("inspection_date", v)} />
+      <InputField label="다음 검사일" type="date" value={form.next_inspection_date} onChange={(v) => updateField("next_inspection_date", v)} />
+      <InputField label="결과" value={form.inspection_result} onChange={(v) => updateField("inspection_result", v)} placeholder="예: 적합" />
+    </div>
+  );
+
+  const renderRegistration = () => (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <InputField label="등록 번호" value={form.registration_number} onChange={(v) => updateField("registration_number", v)} placeholder="예: 12가3456" />
+      <InputField label="등록 기관" value={form.registration_office} onChange={(v) => updateField("registration_office", v)} placeholder="예: 서초구청" />
+      <InputField label="등록일" type="date" value={form.registration_date} onChange={(v) => updateField("registration_date", v)} />
+      <InputField label="등록 구분" value={form.registration_type} onChange={(v) => updateField("registration_type", v)} placeholder="예: 자가용" />
+    </div>
+  );
+
+  const renderMemo = () => (
+    <label className="flex flex-col gap-2">
+      <span className="text-sm font-semibold text-text-light">메모</span>
+      <textarea
+        value={form.memo ?? ""}
+        onChange={(e) => updateField("memo", e.target.value)}
+        rows={6}
+        className="rounded-xl border border-border-light bg-background-light px-3 py-3 text-sm text-text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+        placeholder="메모를 입력하세요."
+      />
+    </label>
+  );
+
+  const renderSection = () => {
+    switch (tab) {
+      case "insurance":
+        return renderInsurance();
+      case "tax":
+        return renderTax();
+      case "inspection":
+        return renderInspection();
+      case "registration":
+        return renderRegistration();
+      case "memo":
+        return renderMemo();
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="flex min-h-screen flex-col bg-background-light text-text-light">
+      <div className="space-y-6 px-4 py-6 pb-32">
+        <section className="rounded-2xl border border-border-light bg-surface-light p-5 shadow-card">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-subtext-light">차량 선택</p>
+              <h1 className="mt-1 text-xl font-bold text-text-light">{vehicle?.maker} {vehicle?.model}</h1>
+              <p className="text-sm text-subtext-light">등록 번호: {vehicle?.plate_no ?? "미등록"}</p>
+            </div>
+            <div className="flex flex-col items-end text-right text-sm text-subtext-light">
+              <span className="font-semibold text-text-light">마지막 저장 상태</span>
+              <span>{message && messageTone === "success" ? "방금 저장됨" : "확인 필요"}</span>
+            </div>
+          </div>
+        </section>
+
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {TABS.map((item) => {
+            const isActive = item.key === tab;
+            return (
+              <button
+                key={item.key}
+                onClick={() => setTab(item.key)}
+                type="button"
+                className={`flex h-10 shrink-0 items-center gap-2 rounded-full px-4 text-sm font-semibold transition ${isActive ? "bg-primary text-white shadow" : "bg-surface-light text-subtext-light border border-border-light"}`}
+              >
+                <span className="material-symbols-outlined text-base">{item.icon}</span>
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <SectionCard title={sectionMeta.label} description={sectionMeta.description} icon={sectionMeta.icon}>{renderSection()}</SectionCard>
+      </div>
+
+      <div className="fixed bottom-0 left-0 right-0 border-t border-border-light bg-surface-light/95 px-4 py-3 backdrop-blur">
+        <div className="mx-auto flex max-w-xl flex-col gap-3">
+          <button
+            type="button"
+            onClick={saveData}
+            disabled={loading || !vehicle}
+            className={`flex h-12 items-center justify-center rounded-xl text-sm font-semibold transition ${loading || !vehicle ? "bg-primary/40 text-white" : "bg-primary text-white hover:bg-primary/90"}`}
+          >
+            {loading ? "저장 중..." : "정보 저장"}
+          </button>
+          {message && (
+            <p className={`text-center text-sm ${messageTone === "success" ? "text-emerald-600" : "text-red-600"}`}>{message}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
