@@ -265,9 +265,7 @@ function AppShell({ selectedVehicle, setSelectedVehicle, vehicles, fetchVehicles
   const location = useLocation();
   const isDashboard = location.pathname === "/";
 
-  const headerTitle = selectedVehicle
-    ? getHeaderTitle(location.pathname, selectedVehicle)
-    : "내 차량";
+  const headerTitle = getHeaderTitle(location.pathname);
 
   const showBackButton = selectedVehicle && !isDashboard;
 
@@ -285,10 +283,10 @@ function AppShell({ selectedVehicle, setSelectedVehicle, vehicles, fetchVehicles
             <button
               type="button"
               aria-label="뒤로가기"
-              className="flex h-10 w-10 items-center justify-center rounded-full text-text-light transition hover:bg-primary/10"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-border-light bg-surface-light text-primary shadow-sm transition hover:bg-primary/10"
               onClick={() => navigate(-1)}
             >
-              <span className="material-symbols-outlined text-2xl">arrow_back</span>
+              <span className="material-symbols-outlined text-xl">arrow_back</span>
             </button>
           ) : (
             <span className="material-symbols-outlined text-2xl text-subtext-light">menu</span>
@@ -478,10 +476,9 @@ function AppShell({ selectedVehicle, setSelectedVehicle, vehicles, fetchVehicles
   );
 }
 
-function getHeaderTitle(pathname, vehicle) {
-  if (pathname === "/" && vehicle) {
-    const displayName = [vehicle?.maker, vehicle?.model].filter(Boolean).join(" ");
-    return displayName || "대시보드";
+function getHeaderTitle(pathname) {
+  if (pathname === "/") {
+    return "내차수첩";
   }
   return ROUTE_TITLES[pathname] || "차량 관리";
 }

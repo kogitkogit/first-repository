@@ -20,6 +20,12 @@ const menu = [
 
 const DUE_TONE_PRIORITY = { danger: 0, warn: 1, ok: 2, muted: 3 };
 
+const METRIC_ROUTE_MAP = {
+  expense: "/costs",
+  distance: "/driving",
+  fuel: "/fuel",
+};
+
 export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 0 }) {
   const [stats, setStats] = useState({ avg_km_per_l: null, total_cost: null });
   const [expenseMonthly, setExpenseMonthly] = useState(0);
@@ -276,10 +282,17 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
         </div>
       </section>
       <section className="grid grid-cols-3 gap-3">
-          {metrics.map((metric) => (
-            <div
+        {metrics.map((metric) => {
+          const targetRoute = METRIC_ROUTE_MAP[metric.key];
+          return (
+            <button
               key={metric.key}
-              className="flex min-w-0 flex-col items-center gap-1 rounded-2xl border border-border-light bg-primary/5 p-3 text-left shadow-card"
+              type="button"
+              disabled={!targetRoute}
+              onClick={() => targetRoute && navigate(targetRoute)}
+              className={`flex w-full min-w-0 flex-col items-center gap-1 rounded-2xl border border-border-light bg-primary/5 p-3 text-left shadow-card transition ${
+                targetRoute ? "cursor-pointer hover:border-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40" : "cursor-default"
+              }`}
             >
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-xl text-primary">
@@ -292,9 +305,10 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
               <span className="text-sm font-bold text-text-light">
                 {metric.value}
               </span>
-            </div>
-          ))}
-        </section>
+            </button>
+          );
+        })}
+      </section>
 
       <section className="rounded-2xl border border-primary bg-gradient-to-b from-primary/10 via-primary/5 to-surface-light p-5 shadow-card">
         <div className="mb-4 flex items-center justify-between">

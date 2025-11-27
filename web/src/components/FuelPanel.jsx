@@ -220,7 +220,7 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
               onChange={(e) => setOnlyFull(e.target.checked)}
               className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
             />
-            만땅 주유만 보기
+            가득 주유만 보기
           </label>
         </div>
       </section>
@@ -344,7 +344,7 @@ function SummaryCard({ title, value, caption }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</p>
-      <p className="mt-2 text-xl font-bold text-slate-900">{value}</p>
+      <p className="mt-2 text-[16px] font-bold text-slate-900">{value}</p>
       {caption ? <p className="mt-1 text-[10px] text-slate-500">{caption}</p> : null}
     </div>
   );

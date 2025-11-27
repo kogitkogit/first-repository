@@ -679,7 +679,7 @@ function SummaryCard({ title, value, caption }) {
   return (
     <div className="rounded-2xl border border-border-light bg-white p-4 shadow-sm">
       <p className="text-xs font-semibold uppercase tracking-wide text-subtext-light">{title}</p>
-      <p className="mt-2 text-xl font-bold text-text-light">{value}</p>
+      <p className="mt-2 text-[16px] font-bold text-text-light">{value}</p>
       {caption ? <p className="mt-1 text-[10px] text-subtext-light">{caption}</p> : null}
     </div>
   );

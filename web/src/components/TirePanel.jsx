@@ -100,7 +100,7 @@ export default function TirePanel({ vehicle }) {
   const [selected, setSelected] = useState(POSITIONS[0].key);
   const [history, setHistory] = useState({ measurements: [], services: [] });
   const [metaForm, setMetaForm] = useState(() => emptyMetaForm());
-  const [meta편집, setMeta편집] = useState(false);
+  const [metaEditing, setMetaEditing] = useState(false);
   const [measurementForm, setMeasurementForm] = useState(() => emptyMeasurementForm());
   const [measurementModalOpen, setMeasurementModalOpen] = useState(false);
   const [serviceModal, setServiceModal] = useState({ open: false, type: null });
@@ -127,7 +127,7 @@ export default function TirePanel({ vehicle }) {
   }, [selected, vehicle?.id]);
 
   useEffect(() => {
-    if (selectedSummary && !meta편집) {
+    if (selectedSummary && !metaEditing) {
       setMetaForm({
         brand: selectedSummary.brand ?? "",
         model: selectedSummary.model ?? "",
@@ -141,7 +141,7 @@ export default function TirePanel({ vehicle }) {
         notes: selectedSummary.notes ?? "",
       });
     }
-  }, [selectedSummary, meta편집]);
+  }, [selectedSummary, metaEditing]);
 
   const fetchSummary = async () => {
     try {
@@ -202,7 +202,7 @@ export default function TirePanel({ vehicle }) {
         params: { vehicleId: vehicle.id },
       });
       await fetchSummary();
-      setMeta편집(false);
+      setMetaEditing(false);
     } catch (error) {
       console.error("Failed to update tire", error);
       alert("타이어 정보를 저장하지 못했습니다. 자세한 내용은 콘솔을 확인하세요.");
@@ -291,6 +291,36 @@ export default function TirePanel({ vehicle }) {
   };
 
   const latestMeasurement = history.measurements?.[0];
+  const quickStats = [
+    {
+      key: "pressure",
+      label: "공기압",
+      icon: "compress",
+      value:
+        latestMeasurement?.pressure_kpa != null
+          ? `${latestMeasurement.pressure_kpa.toFixed(1)} ${selectedSummary?.pressure_unit ?? "kPa"}`
+          : "기록 없음",
+      caption: selectedSummary ? `권장: ${renderPressureRange(selectedSummary)}` : null,
+    },
+    {
+      key: "tread",
+      label: "트레드 깊이",
+      icon: "straighten",
+      value:
+        latestMeasurement?.tread_depth_mm != null
+          ? `${latestMeasurement.tread_depth_mm.toFixed(1)} mm`
+          : "기록 없음",
+    },
+    {
+      key: "temperature",
+      label: "표면 온도",
+      icon: "device_thermostat",
+      value:
+        latestMeasurement?.temperature_c != null
+          ? `${latestMeasurement.temperature_c.toFixed(1)} ℃`
+          : "기록 없음",
+    },
+  ];
 
   return (
     <div className="space-y-6 pb-16">
@@ -322,10 +352,10 @@ export default function TirePanel({ vehicle }) {
                   type="button"
                   style={POSITION_STYLES[pos.key]}
                   onClick={() => setSelected(pos.key)}
-                  className={`absolute flex flex-col items-center transition-transform ${isActive ? "scale-110" : "scale-100"}`}
+                  className={`absolute flex flex-col items-center transition-transform ${isActive ? "scale-125" : "scale-100"}`}
                 >
                   <span
-                    className={`flex h-14 w-14 items-center justify-center rounded-full border-4 bg-white text-sm font-bold text-slate-800 shadow ${ring}`}
+                    className={`flex ${isActive ? "h-16 w-16 border-[5px]" : "h-12 w-12 border-4"} items-center justify-center rounded-full bg-white text-base font-bold text-slate-800 shadow ${ring}`}
                   >
                     {pos.short}
                   </span>
@@ -347,17 +377,17 @@ export default function TirePanel({ vehicle }) {
               <h3 className="text-base font-semibold text-slate-900">기본 정보</h3>
               <p className="text-sm text-slate-500">브랜드, 사이즈, 장착 정보와 목표치를 관리하세요.</p>
             </div>
-            {!meta편집 ? (
+            {!metaEditing ? (
               <button
                 className="rounded-lg border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
-                onClick={() => setMeta편집(true)}
+                onClick={() => setMetaEditing(true)}
               >
                 편집
               </button>
             ) : null}
           </header>
 
-          {!meta편집 ? (
+          {!metaEditing ? (
             <div className="grid grid-cols-1 gap-3 text-sm">
               <InfoRow label="브랜드" value={selectedSummary?.brand || "-"} />
               <InfoRow label="모델" value={selectedSummary?.model || "-"} />
@@ -410,7 +440,7 @@ export default function TirePanel({ vehicle }) {
                   type="button"
                   className={SECONDARY_BUTTON_CLASS}
                   onClick={() => {
-                    setMeta편집(false);
+                    setMetaEditing(false);
                     setMetaForm(emptyMetaForm());
                   }}
                 >
@@ -423,53 +453,43 @@ export default function TirePanel({ vehicle }) {
       </div>
 
       <section className="space-y-4">
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-          <header className="flex items-center justify-between">
-            <div>
-              <h3 className="text-base font-semibold text-slate-900">최근 계측값</h3>
-              <p className="text-sm text-slate-500">공기압과 트레드 깊이를 최신 상태로 유지하세요.</p>
-            </div>
+        <div className="rounded-2xl border border-border-light bg-surface-light p-5 shadow-card space-y-4">
+          <div>
+            <p className="text-xs font-semibold uppercase text-subtext-light">최근 계측값</p>
+            <p className="text-sm text-subtext-light">가장 최근에 저장한 공기압, 트레드, 온도를 확인하세요.</p>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {quickStats.map((stat) => (
+              <div key={stat.key} className="rounded-2xl border border-border-light bg-white/85 p-4 text-left shadow-sm">
+                <div className="flex items-center gap-2 text-subtext-light">
+                  <span className="material-symbols-outlined text-base text-primary">{stat.icon}</span>
+                  <span className="text-xs font-semibold uppercase tracking-wide">{stat.label}</span>
+                </div>
+                <p className="mt-2 text-xl font-bold text-text-light">{stat.value}</p>
+                {stat.caption ? <p className="text-xs text-subtext-light">{stat.caption}</p> : null}
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-subtext-light">측정값은 최신 기록을 기준으로 계산됩니다.</p>
             <button
-              className="rounded-xl bg-blue-600 px-3 py-1 text-sm font-semibold text-white shadow hover:bg-blue-700"
+              type="button"
+              className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary/90"
               onClick={() => {
                 setMeasurementForm(emptyMeasurementForm());
                 setMeasurementModalOpen(true);
               }}
             >
-              계측값 기록
+              <span className="material-symbols-outlined text-base">add</span>
+              측정값 기록
             </button>
-          </header>
-
-          {latestMeasurement ? (
-            <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm">
-              <p className="font-semibold text-slate-800">{new Date(latestMeasurement.measured_at).toLocaleString()}</p>
-              <div className="mt-2 grid grid-cols-2 gap-3">
-                <InfoRow label="공기압" value={latestMeasurement.pressure_kpa != null ? `${latestMeasurement.pressure_kpa.toFixed(1)} kPa` : "-"} compact />
-                <InfoRow label="트레드" value={latestMeasurement.tread_depth_mm != null ? `${latestMeasurement.tread_depth_mm.toFixed(1)} mm` : "-"} compact />
-                <InfoRow label="온도" value={latestMeasurement.temperature_c != null ? `${latestMeasurement.temperature_c.toFixed(1)} degC` : "-"} compact />
-                <InfoRow label="기록자" value={latestMeasurement.measured_by || "-"} compact />
-              </div>
-              {latestMeasurement.notes ? (
-                <p className="mt-2 text-slate-600">{latestMeasurement.notes}</p>
-              ) : null}
-            </div>
-          ) : (
-            <p className="mt-4 text-sm text-slate-500">등록된 계측값이 없습니다.</p>
-          )}
-        </div>
-
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-          <h3 className="text-base font-semibold text-slate-900">서비스 작업</h3>
-          <p className="text-sm text-slate-500">교체 이력과 정비소 방문을 등록하세요.</p>
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <ActionButton label="교차" onClick={() => openServiceModal("replacement")} />
-            <ActionButton label="로테이션" onClick={() => openServiceModal("rotation")} />
-            <ActionButton label="얼라인먼트" onClick={() => openServiceModal("alignment")} />
           </div>
         </div>
       </section>
 
-      <section className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+
+      <section className="space-y-4">
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
         <div className="flex items-center justify-between">
           <h3 className="text-base font-semibold text-slate-900">기록</h3>
           <div className="flex rounded-full border border-slate-200 p-1 text-xs font-semibold">
@@ -477,13 +497,13 @@ export default function TirePanel({ vehicle }) {
               className={`px-3 py-1 rounded-full ${historyTab === "measurements" ? "bg-blue-600 text-white" : "text-slate-600"}`}
               onClick={() => setHistoryTab("measurements")}
             >
-              Measurements
+              계측값
             </button>
             <button
               className={`px-3 py-1 rounded-full ${historyTab === "services" ? "bg-blue-600 text-white" : "text-slate-600"}`}
               onClick={() => setHistoryTab("services")}
             >
-              Services
+              서비스
             </button>
           </div>
         </div>
@@ -528,7 +548,20 @@ export default function TirePanel({ vehicle }) {
         ) : (
           <p className="mt-4 text-sm text-slate-500">서비스 기록이 없습니다.</p>
         )}
+      </div>
+
+
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+          <h3 className="text-base font-semibold text-slate-900">서비스 작업</h3>
+          <p className="text-sm text-slate-500">교체 이력과 정비소 방문을 등록하세요.</p>
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <ActionButton label="교차" onClick={() => openServiceModal("replacement")} />
+            <ActionButton label="로테이션" onClick={() => openServiceModal("rotation")} />
+            <ActionButton label="얼라인먼트" onClick={() => openServiceModal("alignment")} />
+          </div>
+        </div>
       </section>
+
 
       {measurementModalOpen ? (
         <Modal

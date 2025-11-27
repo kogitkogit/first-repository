@@ -1,5 +1,4 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import api from "../api/client";
 import { buildVehicleImageUrl } from "../utils/vehicleImages";
 
@@ -107,7 +106,6 @@ function InfoItem({ label, value, badge, icon }) {
 }
 
 export default function BasicInfoPanel({ vehicle, onRefresh }) {
-  const navigate = useNavigate();
   const [legalInfo, setLegalInfo] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -276,7 +274,7 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
       { icon: "event_available", label: "보험 만기", value: formatDate(insuranceExpiry) },
       { icon: "event_repeat", label: "다음 검사 예정", value: formatDate(nextInspectionDate) },
     ];
-      const image = buildVehicleImageUrl(vehicle?.model, api.defaults.baseURL);
+    const image = buildVehicleImageUrl(vehicle?.model, api.defaults.baseURL);
     return {
       title,
       subtitle,
@@ -289,25 +287,7 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
 
   return (
     <div className="space-y-6 px-4 py-6 pb-24">
-      <div className="flex items-center justify-between">
-        <button
-          type="button"
-          aria-label="이전으로"
-          className="flex h-10 w-10 items-center justify-center rounded-full border border-border-light bg-surface-light text-primary shadow-sm transition hover:bg-primary/10"
-          onClick={() => navigate(-1)}
-        >
-          <span className="material-symbols-outlined text-lg">arrow_back</span>
-        </button>
-        <button
-          type="button"
-          className="flex items-center gap-2 rounded-full border border-border-light bg-surface-light px-4 py-2 text-sm font-semibold text-subtext-light transition hover:text-primary"
-          onClick={handleRefreshClick}
-        >
-          <span className="material-symbols-outlined text-base">refresh</span>
-          새로고침
-        </button>
-      </div>
-
+      
       {error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>
       ) : null}
@@ -327,12 +307,20 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
               </span>
               <div className="flex w-full items-start justify-between gap-3">
                 <div className="flex-1 space-y-1">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-primary">차량 메인정보</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-primary">차량 기본정보</p>
                   <h1 className="text-xl font-bold text-text-light">{mainSummary.title}</h1>
                   <p className="text-sm text-subtext-light">{mainSummary.subtitle}</p>
                 </div>
-                <div className="flex w-40 justify-end self-start sm:w-48">
-                  <div className="relative h-24 w-full overflow-hidden rounded-2xl bg-gradient-to-br from-primary/15 via-primary/5 to-transparent sm:h-28">
+                <div className="flex items-center gap-3 self-start">
+                  <button
+                    type="button"
+                    className="flex items-center gap-2 rounded-full border border-border-light bg-surface-light px-4 py-2 text-sm font-semibold text-subtext-light transition hover:text-primary"
+                    onClick={handleRefreshClick}
+                  >
+                    <span className="material-symbols-outlined text-base">refresh</span>
+                    새로고침
+                  </button>
+                  <div className="pointer-events-none h-28 w-28 overflow-hidden rounded-2xl border border-border-light/60 bg-white shadow-card">
                     {mainSummary.image ? (
                       <img
                         src={mainSummary.image}
