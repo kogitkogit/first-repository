@@ -9,6 +9,12 @@ const RANGE_FILTERS = [
   { key: "all", label: "전체", months: null },
 ];
 
+const SUMMARY_RANGE_OPTIONS = [
+  { key: "week", label: "주간", days: 7 },
+  { key: "month", label: "월간", days: 30 },
+  { key: "year", label: "연간", days: 365 },
+];
+
 const INPUT_CLASS = "block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100";
 
 const defaultForm = (vehicle) => ({
@@ -23,9 +29,9 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
 
   const [records, setRecords] = useState([]);
   const [filteredRecords, setFilteredRecords] = useState([]);
-  const [stats, setStats] = useState(null);
   const [rangeFilter, setRangeFilter] = useState("3m");
-  const [onlyFull, setOnlyFull] = useState(true);
+  const [onlyFull, setOnlyFull] = useState(false);
+  const [summaryRange, setSummaryRange] = useState("month");
   const [formModal, setFormModal] = useState({ open: false, mode: "create" });
   const [formValues, setFormValues] = useState(() => defaultForm(vehicle));
   const [selectedRecord, setSelectedRecord] = useState(null);
@@ -38,7 +44,6 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
 
   useEffect(() => {
     if (!vehicle) return;
-    fetchStats();
     fetchRecords();
   }, [vehicle]);
 
@@ -46,14 +51,30 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
     applyFilters();
   }, [records, rangeFilter, onlyFull]);
 
-  const fetchStats = async () => {
-    try {
-      const { data } = await api.get("/fuel/stats", { params: { vehicleId: vehicle.id } });
-      setStats(data);
-    } catch (error) {
-      console.error("주유 통계를 불러오지 못했습니다.", error);
+  const summaryRecords = useMemo(() => {
+    const period = resolveSummaryPeriod(summaryRange);
+    if (!period) return records;
+    return records.filter((item) => {
+      const dateKey = String(item.date).slice(0, 10);
+      return dateKey >= period.fromDate && dateKey <= period.toDate;
+    });
+  }, [records, summaryRange]);
+
+  const summaryStats = useMemo(() => {
+    if (!summaryRecords.length) {
+      return { totalCost: 0, count: 0, avgCost: 0, lastRecord: null };
     }
-  };
+    const totalCost = summaryRecords.reduce(
+      (sum, item) => sum + Number(item.price_total || 0),
+      0,
+    );
+    const count = summaryRecords.length;
+    const avgCost = Math.round(totalCost / count);
+    const sorted = [...summaryRecords].sort(
+      (a, b) => new Date(b.date) - new Date(a.date),
+    );
+    return { totalCost, count, avgCost, lastRecord: sorted[0] };
+  }, [summaryRecords]);
 
   const fetchRecords = async () => {
     setLoading(true);
@@ -161,44 +182,59 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
   return (
     <div className="pb-28 space-y-6">
       <section className="space-y-4 rounded-2xl border border-slate-200 bg-surface-light p-5 shadow-sm">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-4">
           <div>
             <h1 className="text-xl font-bold text-slate-900">주유 관리</h1>
-            <p className="text-sm text-slate-600">주유 기록을 추가하고 소비 패턴을 확인하세요.</p>
+            <p className="text-sm text-slate-600">주유 이력을 추가하고 비용 변화를 확인해보세요.</p>
           </div>
-          <button
-            type="button"
-            className="flex w-3/4 mx-auto items-center justify-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 lg:w-auto"
-            onClick={openCreate}
-          >
-            <span className="material-symbols-outlined text-base">add</span>
-            주유 기록 추가
-          </button>
-        </div>
-        <div className="grid grid-cols-4 gap-2">
-          <SummaryCard
-            title="평균 연비"
-            value={stats?.avg_km_per_l != null ? `${Number(stats.avg_km_per_l).toFixed(1)} km/L` : "집계 없음"}
-            caption="주유 기록 기반 계산"
-          />
-          <SummaryCard
-            title="누적 주유 비용"
-            value={stats?.total_cost != null ? `${Number(stats.total_cost).toLocaleString()} 원` : "0 원"}
-          />
-          <SummaryCard
-            title="선택기간 총량"
-            value={`${summary.totalLiters.toFixed(1)} L`}
-            caption={`총 ${filteredRecords.length}건의 주유 기록`}
-          />
-          <SummaryCard
-            title="평균 단가"
-            value={summary.avgPricePerLiter ? `${summary.avgPricePerLiter.toLocaleString()} 원` : "0 원"}
-            caption={summary.lastFill ? `${summary.lastFill.date} ? ${summary.lastFill.liters}L` : "최근 기록이 없습니다"}
-          />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <button
+              type="button"
+              className="flex w-full items-center justify-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 sm:w-auto"
+              onClick={openCreate}
+            >
+              <span className="material-symbols-outlined text-base">add</span>
+              주유 기록 추가
+            </button>
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <span className="font-semibold text-slate-800">조회 기간</span>
+              <select
+                value={summaryRange}
+                onChange={(e) => setSummaryRange(e.target.value)}
+                className="rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              >
+                {SUMMARY_RANGE_OPTIONS.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
+            <SummaryCard
+              title={`${getSummaryRangeLabel(summaryRange)} 총 주유비`}
+              value={summaryStats.totalCost ? `${summaryStats.totalCost.toLocaleString()} 원` : "0 원"}
+              caption={`${summaryStats.count}건의 주유 기록`}
+            />
+            <SummaryCard
+              title="주유 건수"
+              value={`${summaryStats.count}건`}
+              caption="선택한 기간 기준"
+            />
+            <SummaryCard
+              title="마지막 주유일"
+              value={summaryStats.lastRecord?.date || "-"}
+              caption={summaryStats.lastRecord ? `${summaryStats.lastRecord.liters}L · ${Number(summaryStats.lastRecord.price_total || 0).toLocaleString()} 원` : "최근 주유 기록이 없습니다"}
+            />
+            <SummaryCard
+              title="평균 주유비"
+              value={summaryStats.avgCost ? `${summaryStats.avgCost.toLocaleString()} 원` : "0 원"}
+              caption={summaryStats.count ? `${summaryStats.count}건 기준` : "기록 없음"}
+            />
+          </div>
         </div>
       </section>
-
-
 
       <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-2">
@@ -406,15 +442,14 @@ function FuelDetailSheet({ record, onClose, onEdit, onDelete }) {
   const liters = Number(record.liters || 0);
   const unitPrice = liters ? Math.round(cost / liters) : null;
   return (
-    <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-0 sm:items-center sm:p-4">
-      <div className="h-[70vh] w-full max-w-lg rounded-t-3xl bg-white p-6 shadow-xl sm:h-auto sm:rounded-3xl">
-        <div className="mb-4 flex items-center justify-between">
-          <span className="h-1.5 w-12 rounded-full bg-slate-200 sm:hidden" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl">
+        <div className="flex items-center justify-end">
           <button className="text-slate-500" onClick={onClose} aria-label="상세 닫기">
             <span className="material-symbols-outlined text-2xl">close</span>
           </button>
         </div>
-        <div className="space-y-4 overflow-y-auto">
+        <div className="space-y-4">
           <div className="space-y-2">
             <p className="text-xs text-slate-500">주유 날짜</p>
             <p className="text-lg font-semibold text-slate-900">{record.date}</p>
@@ -456,3 +491,40 @@ function InfoRow({ label, value }) {
     </div>
   );
 }
+
+
+
+
+
+function resolveSummaryPeriod(rangeKey) {
+  const today = new Date();
+  const end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  let start;
+  switch (rangeKey) {
+    case "week":
+      start = new Date(end);
+      start.setDate(end.getDate() - 6);
+      break;
+    case "month":
+      start = new Date(end);
+      start.setDate(end.getDate() - 29);
+      break;
+    case "year":
+      start = new Date(end);
+      start.setFullYear(end.getFullYear() - 1);
+      start.setDate(start.getDate() + 1);
+      break;
+    default:
+      return null;
+  }
+  return {
+    fromDate: start.toISOString().slice(0, 10),
+    toDate: end.toISOString().slice(0, 10),
+  };
+}
+
+function getSummaryRangeLabel(rangeKey) {
+  const option = SUMMARY_RANGE_OPTIONS.find((item) => item.key === rangeKey);
+  return option ? option.label : "기간";
+}
+

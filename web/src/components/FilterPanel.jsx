@@ -44,7 +44,8 @@ function ItemCard({ item, state, onChange, onSaveHistory, onSaveConfig, onOpenHi
     };
 
     if (mode === "distance") {
-      const baseOdo = toIntOrNull(state.lastOdo) ?? parseOdoFromHistory(lastHistoryValue);
+      const historyOdo = parseOdoFromHistory(lastHistoryValue);
+      const baseOdo = historyOdo ?? toIntOrNull(state.lastOdo);
       if (currentMileage != null && baseOdo != null && state.cycleKm) {
         const used = Number(currentMileage) - Number(baseOdo);
         const remain = Number(state.cycleKm || 0) - used;
@@ -383,7 +384,7 @@ function HistoryModal({ open, onClose, title, rows, onDeleteSelected, onUpdateRo
   );
 }
 
-export default function FilterPanel({ currentMileage, vehicleId, apiClient, onBack, hideLocalBack }) {
+export default function FilterPanel({ currentMileage, vehicleId, apiClient, onBack, hideLocalBack, userId }) {
   const [items, setItems] = useState(() =>
     BASE_ITEMS.map((it) => ({
       key: it.key,
@@ -651,48 +652,72 @@ export default function FilterPanel({ currentMileage, vehicleId, apiClient, onBa
   // 계산용: 전체 이력 로우를 가져와 kind별 최대 odo와 최신 날짜를 미리 맵으로 준비
   const [maxOdoByKind, setMaxOdoByKind] = useState({});
   const [maxDateByKind, setMaxDateByKind] = useState({});
-  useEffect(() => {
-    (async () => {
-      if (!vehicleId) return;
-      try {
-        // 정렬에 상관없이 전체 로우를 받아 계산
-        const qs = new URLSearchParams({
-          vehicleId: String(vehicleId),
-          category: CATEGORY,
-          sort: "id",
-          order: "desc",
-        }).toString();
-        const rows = await request("get", `${apiPrefix}/consumables/search?${qs}`);
-        const odoMap = {};
-        const dateMap = {};
-        if (Array.isArray(rows)) {
-          for (const r of rows) {
-            const k = r.kind || r.label;
-            if (!k) continue;
-            if (r.odo_km != null) {
-              const val = Number(r.odo_km);
-              if (Number.isFinite(val)) {
-                odoMap[k] = Math.max(odoMap[k] ?? 0, val);
-              }
+
+  const recomputeUsageStats = async (options = {}) => {
+    const shouldReset = Boolean(options.resetInputs);
+    if (!vehicleId) {
+      setMaxOdoByKind({});
+      setMaxDateByKind({});
+      if (shouldReset) {
+        setItems((prev) => prev.map((row) => (row.lastOdo || row.lastDate ? { ...row, lastOdo: "", lastDate: "" } : row)));
+      }
+      return;
+    }
+    try {
+      const qs = new URLSearchParams({
+        vehicleId: String(vehicleId),
+        category: CATEGORY,
+        sort: "id",
+        order: "desc",
+      }).toString();
+      const rows = await request("get", `${apiPrefix}/consumables/search?${qs}`);
+      const odoMap = {};
+      const dateMap = {};
+      const kindsWithHistory = new Set();
+      if (Array.isArray(rows)) {
+        for (const r of rows) {
+          const k = r.kind || r.label;
+          if (!k) continue;
+          kindsWithHistory.add(k);
+          if (r.odo_km != null) {
+            const val = Number(r.odo_km);
+            if (Number.isFinite(val)) {
+              odoMap[k] = Math.max(odoMap[k] ?? 0, val);
             }
-            if (r.date) {
-              const t = Date.parse(r.date);
-              if (!isNaN(t)) {
-                const prev = dateMap[k] ? Date.parse(dateMap[k]) : undefined;
-                if (prev === undefined || t > prev) {
-                  dateMap[k] = String(r.date).slice(0, 10);
-                }
+          }
+          if (r.date) {
+            const t = Date.parse(r.date);
+            if (!Number.isNaN(t)) {
+              const prev = dateMap[k] ? Date.parse(dateMap[k]) : undefined;
+              if (prev === undefined || t > prev) {
+                dateMap[k] = String(r.date).slice(0, 10);
               }
             }
           }
         }
-        setMaxOdoByKind(odoMap);
-        setMaxDateByKind(dateMap);
-      } catch (e) {
-        console.error("전체 이력 계산 실패:", e);
       }
-    })();
-  }, [vehicleId]);
+      setMaxOdoByKind(odoMap);
+      setMaxDateByKind(dateMap);
+      if (shouldReset) {
+        setItems((prev) =>
+          prev.map((row) =>
+            kindsWithHistory.has(row.kind)
+              ? row
+              : row.lastOdo || row.lastDate
+              ? { ...row, lastOdo: "", lastDate: "" }
+              : row,
+          ),
+        );
+      }
+    } catch (e) {
+      console.error("전체 이력 집계 오류:", e);
+    }
+  };
+
+  useEffect(() => {
+    recomputeUsageStats();
+    // eslint-disable-next-line react-hooks-exhaustive-deps
+  }, [vehicleId, userId]);
 
   const openAllHistory = async () => {
     const rows = await fetchAllHistory();
@@ -724,6 +749,7 @@ export default function FilterPanel({ currentMileage, vehicleId, apiClient, onBa
       const rows = await fetchAllHistory();
       setHistoryModal((p) => ({ ...p, rows }));
     }
+    await recomputeUsageStats({ resetInputs: true });
   };
 
   const updateRow = async (row) => {

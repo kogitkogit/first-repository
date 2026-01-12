@@ -1,6 +1,5 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../api/client";
-import { buildVehicleImageUrl } from "../utils/vehicleImages";
 
 const formatNumber = (value) => {
   if (value === null || value === undefined) return "-";
@@ -110,6 +109,7 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [detailFold, setDetailFold] = useState({ insurance: true, inspection: true });
+
   const loadLegalInfo = useCallback(async () => {
     if (!vehicle?.id) {
       setLegalInfo(null);
@@ -134,14 +134,6 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
     loadLegalInfo();
   }, [loadLegalInfo]);
 
-  if (!vehicle) {
-    return (
-      <div className="px-4 py-6 text-sm text-subtext-light">
-        차량을 다시 선택해주세요.
-      </div>
-    );
-  }
-
   const handleRefreshClick = async () => {
     await Promise.all([
       loadLegalInfo(),
@@ -149,11 +141,12 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
     ]);
   };
 
-  const insuranceExpiry = legalInfo?.insurance_expiry ?? vehicle.insurance_exp;
-  const inspectionDate = legalInfo?.inspection_date ?? vehicle.insp_exp;
+  const insuranceExpiry = legalInfo?.insurance_expiry ?? vehicle?.insurance_exp;
+  const inspectionDate = legalInfo?.inspection_date ?? vehicle?.insp_exp;
   const nextInspectionDate = legalInfo?.next_inspection_date;
 
   const baseInfoItems = useMemo(() => {
+    if (!vehicle) return [];
     const duplicatedLabels = new Set(["차량 번호", "제조사", "차량 모델", "연식", "현재 주행거리"]);
     const items = [
       { label: "차량 번호", value: vehicle.plate_no || "-" },
@@ -265,6 +258,7 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
   );
 
   const mainSummary = useMemo(() => {
+    if (!vehicle) return null;
     const titleParts = [vehicle.maker, vehicle.model].filter(Boolean);
     const title = titleParts.length ? titleParts.join(" ") : vehicle.plate_no || "차량 정보";
     const subtitle = vehicle.plate_no ? `차량 번호 ${vehicle.plate_no}` : "차량 번호 정보 없음";
@@ -274,22 +268,29 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
       { icon: "event_available", label: "보험 만기", value: formatDate(insuranceExpiry) },
       { icon: "event_repeat", label: "다음 검사 예정", value: formatDate(nextInspectionDate) },
     ];
-    const image = buildVehicleImageUrl(vehicle?.model, api.defaults.baseURL);
     return {
       title,
       subtitle,
       owner: vehicle.owner_name || "-",
       vehicleType: vehicle.makerType || "-",
       chips,
-      image,
     };
   }, [vehicle, insuranceExpiry, nextInspectionDate]);
 
+  if (!vehicle) {
+    return (
+      <div className="px-4 py-6 text-sm text-subtext-light">
+        차량을 다시 선택해주세요.
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 px-4 py-6 pb-24">
-      
       {error ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+          {error}
+        </div>
       ) : null}
 
       {loading ? (
@@ -300,16 +301,22 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
 
       <section className="space-y-4 rounded-2xl border border-border-light bg-surface-light p-5 shadow-card">
         <div className="flex flex-col gap-6">
-          <div className="flex flex-col gap-4 md:flex-1 md:max-w-xl">
+          <div className="flex flex-col gap-4 md:flex-1">
             <div className="flex items-start gap-3">
               <span className="material-symbols-outlined flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-sm">
                 directions_car
               </span>
               <div className="flex w-full items-start justify-between gap-3">
                 <div className="flex-1 space-y-1">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-primary">차량 기본정보</p>
-                  <h1 className="text-xl font-bold text-text-light">{mainSummary.title}</h1>
-                  <p className="text-sm text-subtext-light">{mainSummary.subtitle}</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+                    차량 기본정보
+                  </p>
+                  <h1 className="text-xl font-bold text-text-light">
+                    {mainSummary.title}
+                  </h1>
+                  <p className="text-sm text-subtext-light">
+                    {mainSummary.subtitle}
+                  </p>
                 </div>
                 <div className="flex items-center gap-3 self-start">
                   <button
@@ -320,35 +327,22 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
                     <span className="material-symbols-outlined text-base">refresh</span>
                     새로고침
                   </button>
-                  <div className="pointer-events-none h-28 w-28 overflow-hidden rounded-2xl border border-border-light/60 bg-white shadow-card">
-                    {mainSummary.image ? (
-                      <img
-                        src={mainSummary.image}
-                        alt={`${mainSummary.title} 이미지`}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-primary/70">
-                        <span className="material-symbols-outlined text-3xl">directions_car</span>
-                        <p className="text-[10px] font-semibold">차량 이미지 없음</p>
-                      </div>
-                    )}
-                  </div>
                 </div>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2 text-xs text-subtext-light">
-              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 font-semibold text-primary">
-                <span className="material-symbols-outlined text-base">person</span>
-                <span>소유자 {mainSummary.owner}</span>
-              </span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-border-light/60 px-3 py-1 font-semibold text-text-light">
-                <span className="material-symbols-outlined text-base">category</span>
-                <span>{mainSummary.vehicleType}</span>
-              </span>
-            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs text-subtext-light">
+            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 font-semibold text-primary">
+              <span className="material-symbols-outlined text-base">person</span>
+              <span>소유자 {mainSummary.owner}</span>
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-border-light/60 px-3 py-1 font-semibold text-text-light">
+              <span className="material-symbols-outlined text-base">category</span>
+              <span>{mainSummary.vehicleType}</span>
+            </span>
           </div>
         </div>
+
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {mainSummary.chips.map((chip) => (
             <div
@@ -359,7 +353,9 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
                 {chip.icon}
               </span>
               <div className="space-y-0.5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-subtext-light">{chip.label}</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-subtext-light">
+                  {chip.label}
+                </p>
                 <p className="text-sm font-semibold text-text-light">{chip.value}</p>
               </div>
             </div>
@@ -397,15 +393,13 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
                 onClick={() =>
                   setDetailFold((prev) => ({ ...prev, insurance: !prev.insurance }))
                 }
-                aria-expanded={!detailFold.insurance}
-                aria-label={detailFold.insurance ? "보험 정보 펼치기" : "보험 정보 접기"}
               >
                 <span className="material-symbols-outlined text-base">
                   {detailFold.insurance ? "expand_more" : "expand_less"}
                 </span>
               </button>
             </div>
-            {!detailFold.insurance ? (
+            {!detailFold.insurance && (
               <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
                 {insuranceItems.map((item) => (
                   <InfoItem
@@ -417,7 +411,7 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
                   />
                 ))}
               </div>
-            ) : null}
+            )}
           </div>
 
           <div className="rounded-2xl border border-border-light bg-surface-light p-4 shadow-sm">
@@ -432,15 +426,13 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
                 onClick={() =>
                   setDetailFold((prev) => ({ ...prev, inspection: !prev.inspection }))
                 }
-                aria-expanded={!detailFold.inspection}
-                aria-label={detailFold.inspection ? "점검 · 등록 · 세금 펼치기" : "점검 · 등록 · 세금 접기"}
               >
                 <span className="material-symbols-outlined text-base">
                   {detailFold.inspection ? "expand_more" : "expand_less"}
                 </span>
               </button>
             </div>
-            {!detailFold.inspection ? (
+            {!detailFold.inspection && (
               <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
                 {inspectionDetailItems.map((item) => (
                   <InfoItem
@@ -452,19 +444,19 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
                   />
                 ))}
               </div>
-            ) : null}
+            )}
           </div>
         </div>
       </section>
 
-      {legalInfo?.memo ? (
+      {legalInfo?.memo && (
         <section className="space-y-2">
           <h2 className="text-base font-semibold text-text-light">메모</h2>
           <div className="rounded-2xl border border-border-light bg-surface-light p-4 text-sm text-text-light shadow-sm">
             {legalInfo.memo}
           </div>
         </section>
-      ) : null}
+      )}
     </div>
   );
 }

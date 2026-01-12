@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import api from "../api/client";
 
 const DEFAULT_FORM = {
@@ -19,6 +19,37 @@ const DEFAULT_FORM = {
   registration_date: "",
   registration_type: "",
   memo: "",
+};
+
+const SECTION_LABELS = {
+  insurance: "보험",
+  tax: "자동차세",
+  inspection: "정기검사",
+  registration: "차량 등록",
+  memo: "메모",
+};
+
+const SECTION_FIELD_MAP = {
+  insurance: [
+    "insurance_company",
+    "insurance_number",
+    "insurance_expiry",
+    "insurance_fee",
+  ],
+  tax: ["tax_year", "tax_amount", "tax_due_date", "tax_paid"],
+  inspection: [
+    "inspection_center",
+    "inspection_date",
+    "next_inspection_date",
+    "inspection_result",
+  ],
+  registration: [
+    "registration_number",
+    "registration_office",
+    "registration_date",
+    "registration_type",
+  ],
+  memo: ["memo"],
 };
 
 const TABS = [
@@ -63,27 +94,52 @@ export default function LegalPanel({ vehicle }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [messageTone, setMessageTone] = useState("success");
+  const [records, setRecords] = useState([]);
+  const [activeRecordId, setActiveRecordId] = useState(null);
+  const activeRecordIdRef = useRef(null);
 
-  useEffect(() => {
-    if (!vehicle) {
+  const loadRecords = async (focusId) => {
+    if (!vehicle?.id) {
+      setRecords([]);
+      setActiveRecordId(null);
       setForm(DEFAULT_FORM);
       return;
     }
-    api
-      .get("/legal/list", { params: { vehicleId: vehicle.id } })
-      .then((res) => {
-        if (Array.isArray(res.data) && res.data.length > 0) {
-          setForm({ ...DEFAULT_FORM, ...res.data[0] });
-        } else {
-          setForm(DEFAULT_FORM);
-        }
-      })
-      .catch(() => {
-        setMessageTone("error");
-        setMessage("법적 정보를 불러오지 못했습니다.");
-        setTimeout(() => setMessage(""), 2500);
-      });
+    try {
+      const res = await api.get("/legal/list", { params: { vehicleId: vehicle.id } });
+      const list = Array.isArray(res.data) ? res.data : [];
+      setRecords(list);
+      if (!list.length) {
+        setActiveRecordId(null);
+        setForm(DEFAULT_FORM);
+        return;
+      }
+      const targetId = focusId ?? activeRecordIdRef.current ?? list[0].id;
+      const target = list.find((item) => item.id === targetId) || list[0];
+      setActiveRecordId(target.id);
+      setForm({ ...DEFAULT_FORM, ...target });
+    } catch (error) {
+      console.error("법적 정보를 불러오는 중 오류가 발생했습니다.", error);
+      setMessageTone("error");
+      setMessage("법적 정보를 불러오는 중 오류가 발생했습니다.");
+      setTimeout(() => setMessage(""), 2500);
+    }
+  };
+
+  useEffect(() => {
+    if (!vehicle?.id) {
+      setRecords([]);
+      setActiveRecordId(null);
+      setForm(DEFAULT_FORM);
+      return;
+    }
+    loadRecords();
   }, [vehicle]);
+
+  useEffect(() => {
+    activeRecordIdRef.current = activeRecordId;
+  }, [activeRecordId]);
+
 
   const sectionMeta = useMemo(() => TABS.find((item) => item.key === tab) ?? TABS[0], [tab]);
 
@@ -91,7 +147,7 @@ export default function LegalPanel({ vehicle }) {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const saveData = async () => {
+  const saveData = async (sectionKey) => {
     if (!vehicle) {
       setMessageTone("error");
       setMessage("차량을 먼저 선택해주세요.");
@@ -107,81 +163,135 @@ export default function LegalPanel({ vehicle }) {
         vehicle_id: vehicle.id,
         tax_paid: Boolean(form.tax_paid),
       };
+      let response;
       if (payload.id) {
-        await api.put(`/legal/update/${payload.id}`, payload);
+        response = await api.put(`/legal/update/${payload.id}`, payload);
       } else {
-        await api.post(`/legal/add`, payload);
+        response = await api.post(`/legal/add`, payload);
       }
+      const savedRecord = response?.data || response;
+      await loadRecords(savedRecord?.id ?? payload.id);
+      const label = SECTION_LABELS[sectionKey] || "법적 정보";
       setMessageTone("success");
-      setMessage("법적 정보가 저장되었습니다.");
+      setMessage(`${label} 정보가 저장되었습니다.`);
     } catch (error) {
       setMessageTone("error");
-      setMessage("저장 중 문제가 발생했습니다. 다시 시도해주세요.");
+      setMessage("저장 중 오류가 발생했습니다. 다시 시도해주세요.");
     } finally {
       setLoading(false);
       setTimeout(() => setMessage(""), 2500);
     }
   };
 
+
   const renderInsurance = () => (
     <div className="grid gap-4 sm:grid-cols-2">
-      <InputField label="보험사" value={form.insurance_company} onChange={(v) => updateField("insurance_company", v)} placeholder="예: 현대해상" />
-      <InputField label="증권 번호" value={form.insurance_number} onChange={(v) => updateField("insurance_number", v)} placeholder="예: ABC-123456" />
+      <InputField label="보험사" value={form.insurance_company} onChange={(v) => updateField("insurance_company", v)} placeholder="예: 카케어손보" />
+      <InputField label="증권번호" value={form.insurance_number} onChange={(v) => updateField("insurance_number", v)} placeholder="예: 123456789" />
       <InputField label="만기일" type="date" value={form.insurance_expiry} onChange={(v) => updateField("insurance_expiry", v)} />
-      <InputField label="보험료 (₩)" type="number" value={form.insurance_fee} onChange={(v) => updateField("insurance_fee", v)} placeholder="예: 350000" />
+      <InputField label="보험료" value={form.insurance_fee} onChange={(v) => updateField("insurance_fee", v)} placeholder="예: 120000" />
+      <div className="sm:col-span-2 flex justify-end">
+        <button
+          type="button"
+          onClick={() => saveData("insurance")}
+          disabled={loading}
+          className={`rounded-full px-4 py-2 text-sm font-semibold text-white ${loading ? "bg-primary/40" : "bg-primary hover:bg-primary/90"}`}
+        >
+          보험 정보 저장
+        </button>
+      </div>
     </div>
   );
+
 
   const renderTax = () => (
     <div className="grid gap-4 sm:grid-cols-2">
-      <InputField label="과세 연도" type="number" value={form.tax_year} onChange={(v) => updateField("tax_year", v)} placeholder="예: 2025" />
-      <InputField label="세액 (₩)" type="number" value={form.tax_amount} onChange={(v) => updateField("tax_amount", v)} placeholder="예: 250000" />
+      <InputField label="과세 연도" value={form.tax_year} onChange={(v) => updateField("tax_year", v)} placeholder="예: 2024" />
+      <InputField label="세액" value={form.tax_amount} onChange={(v) => updateField("tax_amount", v)} placeholder="예: 240000" />
       <InputField label="납부 기한" type="date" value={form.tax_due_date} onChange={(v) => updateField("tax_due_date", v)} />
-      <label className="flex h-11 items-center justify-between rounded-xl border border-border-light bg-background-light px-4 text-sm">
-        <span className="font-semibold text-text-light">납부 완료</span>
-        <span className="relative inline-flex items-center">
-          <input
-            type="checkbox"
-            className="peer h-5 w-10 cursor-pointer appearance-none rounded-full border border-border-light bg-surface-light transition checked:bg-primary"
-            checked={Boolean(form.tax_paid)}
-            onChange={(e) => updateField("tax_paid", e.target.checked)}
-          />
-          <span className="pointer-events-none absolute left-1 top-1 h-3 w-3 rounded-full bg-border-light transition peer-checked:translate-x-5 peer-checked:bg-white" />
-        </span>
+      <label className="flex items-center gap-2 text-sm font-semibold text-text-light">
+        <input type="checkbox" checked={form.tax_paid} onChange={(e) => updateField("tax_paid", e.target.checked)} className="h-4 w-4 rounded border-border-light text-primary focus:ring-primary/40" />
+        납부 완료
       </label>
+      <div className="sm:col-span-2 flex justify-end">
+        <button
+          type="button"
+          onClick={() => saveData("tax")}
+          disabled={loading}
+          className={`rounded-full px-4 py-2 text-sm font-semibold text-white ${loading ? "bg-primary/40" : "bg-primary hover:bg-primary/90"}`}
+        >
+          자동차세 정보 저장
+        </button>
+      </div>
     </div>
   );
 
+
   const renderInspection = () => (
     <div className="grid gap-4 sm:grid-cols-2">
-      <InputField label="검사소" value={form.inspection_center} onChange={(v) => updateField("inspection_center", v)} placeholder="예: 강남 검사소" />
+      <InputField label="검사소" value={form.inspection_center} onChange={(v) => updateField("inspection_center", v)} placeholder="예: 카케어 자동차 검사소" />
       <InputField label="검사일" type="date" value={form.inspection_date} onChange={(v) => updateField("inspection_date", v)} />
       <InputField label="다음 검사일" type="date" value={form.next_inspection_date} onChange={(v) => updateField("next_inspection_date", v)} />
-      <InputField label="결과" value={form.inspection_result} onChange={(v) => updateField("inspection_result", v)} placeholder="예: 적합" />
+      <InputField label="결과/메모" value={form.inspection_result} onChange={(v) => updateField("inspection_result", v)} placeholder="예: 이상 없음" />
+      <div className="sm:col-span-2 flex justify-end">
+        <button
+          type="button"
+          onClick={() => saveData("inspection")}
+          disabled={loading}
+          className={`rounded-full px-4 py-2 text-sm font-semibold text-white ${loading ? "bg-primary/40" : "bg-primary hover:bg-primary/90"}`}
+        >
+          검사 정보 저장
+        </button>
+      </div>
     </div>
   );
+
 
   const renderRegistration = () => (
     <div className="grid gap-4 sm:grid-cols-2">
       <InputField label="등록 번호" value={form.registration_number} onChange={(v) => updateField("registration_number", v)} placeholder="예: 12가3456" />
-      <InputField label="등록 기관" value={form.registration_office} onChange={(v) => updateField("registration_office", v)} placeholder="예: 서초구청" />
+      <InputField label="등록 기관" value={form.registration_office} onChange={(v) => updateField("registration_office", v)} placeholder="예: 강남구청" />
       <InputField label="등록일" type="date" value={form.registration_date} onChange={(v) => updateField("registration_date", v)} />
-      <InputField label="등록 구분" value={form.registration_type} onChange={(v) => updateField("registration_type", v)} placeholder="예: 자가용" />
+      <InputField label="등록 유형" value={form.registration_type} onChange={(v) => updateField("registration_type", v)} placeholder="예: 자가용" />
+      <div className="sm:col-span-2 flex justify-end">
+        <button
+          type="button"
+          onClick={() => saveData("registration")}
+          disabled={loading}
+          className={`rounded-full px-4 py-2 text-sm font-semibold text-white ${loading ? "bg-primary/40" : "bg-primary hover:bg-primary/90"}`}
+        >
+          등록 정보 저장
+        </button>
+      </div>
     </div>
   );
 
+
   const renderMemo = () => (
-    <label className="flex flex-col gap-2">
-      <span className="text-sm font-semibold text-text-light">메모</span>
-      <textarea
-        value={form.memo ?? ""}
-        onChange={(e) => updateField("memo", e.target.value)}
-        rows={6}
-        className="rounded-xl border border-border-light bg-background-light px-3 py-3 text-sm text-text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-        placeholder="메모를 입력하세요."
-      />
-    </label>
+    <div className="space-y-4">
+      <label className="flex flex-col gap-2">
+        <span className="text-sm font-semibold text-text-light">메모</span>
+        <textarea
+          value={form.memo ?? ""}
+          onChange={(e) => updateField("memo", e.target.value)}
+          rows={6}
+          className="rounded-xl border border-border-light bg-background-light px-3 py-3 text-sm text-text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+          placeholder="메모를 입력하세요."
+        />
+      </label>
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => saveData("memo")}
+          disabled={loading}
+          className={`rounded-full px-4 py-2 text-sm font-semibold text-white ${loading ? "bg-primary/40" : "bg-primary hover:bg-primary/90"}`}
+        >
+          메모 저장
+        </button>
+      </div>
+    </div>
   );
+
 
   const renderSection = () => {
     switch (tab) {
@@ -235,13 +345,60 @@ export default function LegalPanel({ vehicle }) {
         </div>
 
         <SectionCard title={sectionMeta.label} description={sectionMeta.description} icon={sectionMeta.icon}>{renderSection()}</SectionCard>
+
+        {records.length ? (
+          <section className="space-y-4 rounded-2xl border border-border-light bg-surface-light p-5 shadow-card">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-text-light">저장된 기록</h2>
+                <p className="text-sm text-subtext-light">아래에서 불러오거나 삭제할 기록을 선택하세요.</p>
+              </div>
+              <button
+                type="button"
+                className="rounded-full border border-border-light px-3 py-1 text-xs font-semibold text-subtext-light transition hover:text-primary"
+                onClick={() => loadRecords(activeRecordId)}
+                disabled={loading}
+              >
+                새로고침
+              </button>
+            </div>
+            <div className="space-y-3">
+              {records.map((record) => (
+                <button
+                  type="button"
+                  key={record.id}
+                  onClick={() => {
+                    setActiveRecordId(record.id);
+                    setForm({ ...DEFAULT_FORM, ...record });
+                  }}
+                  className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
+                    activeRecordId === record.id ? "border-primary bg-primary/5" : "border-border-light bg-white"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1 text-sm">
+                      <p className="font-semibold text-text-light">{record.insurance_company || "보험 정보 미입력"}</p>
+                      <p className="text-xs text-subtext-light">보험 만기 {record.insurance_expiry || "-"}</p>
+                      <p className="text-xs text-subtext-light">검사 {record.next_inspection_date || "-"} · 세금 {record.tax_due_date || "-"}</p>
+                    </div>
+                    {activeRecordId === record.id ? (
+                      <span className="text-xs font-semibold text-primary">선택됨</span>
+                    ) : null}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : (
+          <p className="text-center text-sm text-subtext-light">저장된 기록이 없습니다.</p>
+        )}
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 border-t border-border-light bg-surface-light/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-xl flex-col gap-3">
           <button
             type="button"
-            onClick={saveData}
+            onClick={() => saveData()}
             disabled={loading || !vehicle}
             className={`flex h-12 items-center justify-center rounded-xl text-sm font-semibold transition ${loading || !vehicle ? "bg-primary/40 text-white" : "bg-primary text-white hover:bg-primary/90"}`}
           >
@@ -255,3 +412,7 @@ export default function LegalPanel({ vehicle }) {
     </div>
   );
 }
+
+
+
+

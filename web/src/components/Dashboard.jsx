@@ -4,7 +4,6 @@ import api from "../api/client";
 import { useDrivingAnalysis } from "./DrivingAnalysisPanel";
 import { CONSUMABLE_CATEGORY_META } from "../constants/consumables";
 import { fetchCostSnapshot } from "../utils/costs";
-import { buildVehicleImageUrl } from "../utils/vehicleImages";
 
 const menu = [
   { key: "basic", label: "기본 정보", icon: "badge", path: "/basic" },
@@ -35,6 +34,7 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
   const [odoKm, setOdoKm] = useState("");
   const [dueSummary, setDueSummary] = useState({ loading: false, items: [], error: null });
   const [dueModalOpen, setDueModalOpen] = useState(false);
+  const [odoDateError, setOdoDateError] = useState("");
 
   const analysis = useDrivingAnalysis(vehicle);
   const {
@@ -133,7 +133,13 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
   }, [vehicle, loadDueSummary]);
 
   const handleOdoSave = () => {
-    if (!vehicle || !odoDate || !odoKm) return;
+    if (!vehicle) return;
+    if (!odoDate) {
+      setOdoDateError("날짜를 입력해주세요.");
+      return;
+    }
+    setOdoDateError("");
+    if (!odoKm) return;
     api
       .post("/odometer/update", { vehicleId: vehicle.id, date: odoDate, odo_km: Number(odoKm) })
       .then(() => {
@@ -141,6 +147,7 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
         setOdoEditing(false);
         setOdoDate("");
         setOdoKm("");
+        setOdoDateError("");
         fetchDistance();
         loadDueSummary();
         if (onVehicleRefresh) {
@@ -168,28 +175,25 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
   const vehicleSubtitle = [vehicle?.maker, vehicle?.model, vehicle?.year]
     .filter(Boolean)
     .join(" · ") || "차량 기본 정보를 입력해주세요"
-  const vehicleImage = buildVehicleImageUrl(vehicle?.model, api.defaults.baseURL)
-
   const primaryOdo = currentOdo ?? vehicle?.odo_km ?? null
   const currentMileageLabel =
     primaryOdo != null ? `${Number(primaryOdo).toLocaleString()} km` : "주행거리 정보 없음"
 
   const dueCount = dueSummary.items.length;
 
+  const handleDueItemSelect = useCallback(
+    (item) => {
+      if (!item?.route) return;
+      setDueModalOpen(false);
+      navigate(item.route);
+    },
+    [navigate],
+  );
+
   return (
     <div className="space-y-6 px-4 py-6">
-      <section className="relative overflow-hidden rounded-2xl border border-border-light bg-surface-light p-5 shadow-card">
-        {vehicleImage ? (
-          <div className="pointer-events-none absolute top-4 right-4 h-28 w-28 overflow-hidden rounded-2xl border border-border-light/60 bg-white/80 shadow-card">
-            <img src={vehicleImage} alt="선택한 차량" className="h-full w-full object-cover" />
-          </div>
-        ) : (
-          <div className="pointer-events-none absolute top-4 right-4 flex h-28 w-28 items-center justify-center rounded-2xl border border-border-light/60 bg-white/70 text-subtext-light">
-            <span className="material-symbols-outlined text-4xl">directions_car</span>
-          </div>
-        )}
-
-        <div className="space-y-4 pr-32">
+      <section className="rounded-2xl border border-border-light bg-surface-light p-5 shadow-card">
+        <div className="space-y-4">
           <div className="space-y-3">
             <div className="space-y-1.5">
               <h2 className="text-xl font-bold text-text-light">{vehicleTitle}</h2>
@@ -243,9 +247,17 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
                 <input
                   type="date"
                   value={odoDate}
-                  onChange={(e) => setOdoDate(e.target.value)}
+                  onChange={(e) => {
+                    setOdoDate(e.target.value);
+                    if (odoDateError) {
+                      setOdoDateError("");
+                    }
+                  }}
                   className="h-11 rounded-lg border border-border-light px-3 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
                 />
+                {odoDateError ? (
+                  <p className="text-xs font-semibold text-red-500">{odoDateError}</p>
+                ) : null}
               </label>
               <label className="flex flex-col gap-2 text-sm sm:col-span-2">
                 <span className="font-medium text-text-light">주행거리 (km)</span>
@@ -271,6 +283,7 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
                     setOdoEditing(false);
                     setOdoDate("");
                     setOdoKm("");
+                    setOdoDateError("");
                   }}
                   className="flex h-11 flex-1 items-center justify-center rounded-lg border border-border-light text-sm font-semibold text-subtext-light transition hover:text-primary"
                 >
@@ -337,12 +350,13 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
         onClose={() => setDueModalOpen(false)}
         summary={dueSummary}
         onReload={loadDueSummary}
+        onSelectItem={handleDueItemSelect}
       />
     </div>
   );
 }
 
-function DueItemsSheet({ open, onClose, summary, onReload }) 
+function DueItemsSheet({ open, onClose, summary, onReload, onSelectItem }) 
 
 {
   if (!open) return null;
@@ -375,8 +389,15 @@ function DueItemsSheet({ open, onClose, summary, onReload })
           ) : (
             <ul className="space-y-3">
               {items.map((item) => (
-                <li key={item.id} className="rounded-2xl border border-border-light bg-white px-4 py-3 shadow-sm">
-                  <div className="flex items-start justify-between gap-3">
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    onClick={() => item.route && onSelectItem?.(item)}
+                    className={`flex w-full items-start justify-between gap-3 rounded-2xl border px-4 py-3 text-left shadow-sm transition ${
+                      item.route ? "border-border-light bg-white hover:border-primary hover:bg-primary/5" : "cursor-default border-border-light bg-white"
+                    }`}
+                    disabled={!item.route}
+                  >
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-wide text-subtext-light">{item.area}</p>
                       <p className="text-base font-semibold text-text-light">{item.name}</p>
@@ -395,7 +416,7 @@ function DueItemsSheet({ open, onClose, summary, onReload })
                     >
                       {item.tone === "danger" ? "위험" : item.tone === "warn" ? "교체 필요" : item.tone === "ok" ? "양호" : "이상 없음"}
                     </span>
-                  </div>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -451,6 +472,7 @@ async function summarizeConsumableDue(vehicleId, currentMileage) {
               name: item.kind || meta.panelLabel || meta.category,
               status: status.message,
               tone: status.tone,
+              route: meta.route || null,
             };
           }
           return null;
@@ -487,6 +509,7 @@ async function summarizeTireDue(vehicleId) {
           name: tire.position_label || tire.position,
           status: tire.warnings.join(" "),
           tone: tire.status === "critical" ? "danger" : "warn",
+          route: "/tire",
         };
       })
       .filter(Boolean);

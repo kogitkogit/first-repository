@@ -15,6 +15,12 @@ const RANGE_FILTERS = [
   { key: "all", label: "전체", months: null },
 ];
 
+const SUMMARY_RANGE_OPTIONS = [
+  { key: "week", label: "주간", days: 7 },
+  { key: "month", label: "월간", days: 30 },
+  { key: "year", label: "연간", days: 365 },
+];
+
 const SORT_OPTIONS = [
   { key: "recent", label: "최신순" },
   { key: "oldest", label: "오래된순" },
@@ -41,10 +47,11 @@ const defaultForm = (vehicle) => ({
 });
 
 export default function MaintenancePanel({ vehicle }) {
-  const [overview, setOverview] = useState(null);
   const [allRecords, setAllRecords] = useState([]);
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [summaryRange, setSummaryRange] = useState("month");
+  const [summaryRecords, setSummaryRecords] = useState([]);
 
   const [serviceType, setServiceType] = useState("all");
   const [rangeFilter, setRangeFilter] = useState("3m");
@@ -56,11 +63,6 @@ export default function MaintenancePanel({ vehicle }) {
   const [formModal, setFormModal] = useState({ open: false, mode: "create" });
   const [formValues, setFormValues] = useState(() => defaultForm(vehicle));
   const [detailSheet, setDetailSheet] = useState({ open: false, record: null });
-
-  const totalCostMonth = useMemo(() => {
-    if (!overview) return 0;
-    return Number(overview.total_cost_month ?? 0);
-  }, [overview]);
 
   const applyRecordFilters = useCallback(
     (items) => {
@@ -129,17 +131,21 @@ export default function MaintenancePanel({ vehicle }) {
     };
   }, [records]);
 
-  const loadOverview = useCallback(async () => {
-    if (!vehicle) return;
-    try {
-      const { data } = await api.get("/maintenance/overview", {
-        params: { vehicleId: vehicle.id },
-      });
-      setOverview(data);
-    } catch (error) {
-      console.error("정비 요약 정보를 불러오지 못했습니다.", error);
+  const summaryStats = useMemo(() => {
+    if (!summaryRecords.length) {
+      return { totalCost: 0, count: 0, lastRecord: null, averageCost: 0 };
     }
-  }, [vehicle]);
+    const totalCost = summaryRecords.reduce(
+      (sum, item) => sum + Number(item.cost || 0),
+      0,
+    );
+    const count = summaryRecords.length;
+    const averageCost = Math.round(totalCost / count);
+    const sorted = [...summaryRecords].sort(
+      (a, b) => new Date(b.service_date) - new Date(a.service_date),
+    );
+    return { totalCost, count, lastRecord: sorted[0], averageCost };
+  }, [summaryRecords]);
 
   const loadRecords = useCallback(async () => {
     if (!vehicle) return;
@@ -172,9 +178,29 @@ export default function MaintenancePanel({ vehicle }) {
   }, [vehicle]);
 
   useEffect(() => {
-    if (!vehicle) return;
-    loadOverview();
-  }, [vehicle, loadOverview]);
+    if (!vehicle) {
+      setSummaryRecords([]);
+      return;
+    }
+    const fetchSummary = async () => {
+      try {
+        const params = { vehicleId: vehicle.id };
+        const period = resolveSummaryPeriod(summaryRange);
+        if (period) {
+          params.fromDate = period.fromDate;
+          params.toDate = period.toDate;
+        }
+        const { data } = await api.get("/maintenance/records", { params });
+        const list = Array.isArray(data) ? data : [];
+        list.sort((a, b) => new Date(b.service_date) - new Date(a.service_date));
+        setSummaryRecords(list);
+      } catch (error) {
+        console.error("정비 요약을 불러오는 중 오류가 발생했습니다.", error);
+        setSummaryRecords([]);
+      }
+    };
+    fetchSummary();
+  }, [vehicle, summaryRange]);
 
   useEffect(() => {
     loadRecords();
@@ -259,55 +285,59 @@ export default function MaintenancePanel({ vehicle }) {
 
   return (
     <div className="pb-28 space-y-6">      <section className="rounded-3xl border border-border-light bg-surface-light p-6 shadow-card">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="space-y-4">
           <div>
             <h1 className="text-2xl font-bold text-text-light">정비 이력 관리</h1>
-            <p className="mt-1 text-sm text-subtext-light">정비 이력을 추가하고 필요한 정보를 빠르게 확인하세요.</p>
+            <p className="mt-1 text-sm text-subtext-light">정비 이력을 추가하고 필요한 기록을 한눈에 확인하세요.</p>
           </div>
-          <button
-            type="button"
-            className="flex w-3/4 mx-auto items-center justify-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 lg:w-auto"
-            onClick={() => {
-              setFormValues(defaultForm(vehicle));
-              setFormModal({ open: true, mode: "create" });
-            }}
-          >
-            <span className="material-symbols-outlined text-base">add</span>
-            정비 이력 추가
-          </button>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <button
+              type="button"
+              className="flex w-full items-center justify-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 lg:w-auto"
+              onClick={() => {
+                setFormValues(defaultForm(vehicle));
+                setFormModal({ open: true, mode: "create" });
+              }}
+            >
+              <span className="material-symbols-outlined text-base">add</span>
+              정비 이력 추가
+            </button>
+            <label className="flex items-center gap-2 text-sm text-subtext-light">
+              <span className="font-semibold text-text-light">조회 기간</span>
+              <select
+                value={summaryRange}
+                onChange={(e) => setSummaryRange(e.target.value)}
+                className="rounded-full border border-border-light bg-white px-3 py-2 text-sm text-text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                {SUMMARY_RANGE_OPTIONS.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         </div>
 
-        <div className="mt-6 grid gap-2 grid-cols-4">
+        <div className="mt-6 grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
           <SummaryCard
-            title="이번 달 총 비용"
-            value={totalCostMonth ? `${totalCostMonth.toLocaleString()} 원` : "0 원"}
+            title={`${getSummaryRangeLabel(summaryRange)} 총 비용`}
+            value={summaryStats.totalCost ? `${summaryStats.totalCost.toLocaleString()} 원` : "0 원"}
           />
           <SummaryCard
             title="정비 건수"
-            value={overview ? overview.total_count_month : 0}
-            caption={
-              overview
-                ? `${overview.scheduled_count_month}건 정기, ${overview.unscheduled_count_month}건 비정기`
-                : "-"
-            }
+            value={`${summaryStats.count}건`}
+            caption="선택한 기간 기준"
           />
           <SummaryCard
             title="마지막 정비일"
-            value={overview?.last_service_date || "-"}
-            caption={overview?.recent?.[0]?.title || "최근 기록이 없습니다"}
+            value={summaryStats.lastRecord?.service_date || "-"}
+            caption={summaryStats.lastRecord?.title || "최근 정비 기록이 없습니다"}
           />
           <SummaryCard
             title="평균 정비 비용"
-            value={
-              highlightStats
-                ? `${highlightStats.averageCost.toLocaleString()} 원`
-                : "-"
-            }
-            caption={
-              highlightStats?.frequentShop
-                ? `${highlightStats.frequentShop} · 비정기 비율 ${highlightStats.unscheduledRatio}%`
-                : "정보가 없습니다"
-            }
+            value={summaryStats.averageCost ? `${summaryStats.averageCost.toLocaleString()} 원` : "-"}
+            caption={summaryStats.count ? `${summaryStats.count}건 기준` : "기록 없음"}
           />
         </div>
       </section>
@@ -766,10 +796,9 @@ function Modal({ title, onClose, children, actions }) {
 
 function BottomSheet({ children, onClose }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center bg-black/40 p-0 sm:items-center sm:p-4">
-      <div className="h-[75vh] w-full max-w-lg rounded-t-3xl bg-white p-6 shadow-xl sm:h-auto sm:rounded-3xl">
-        <div className="mb-4 flex items-center justify-between">
-          <span className="h-1.5 w-12 rounded-full bg-slate-200 sm:hidden" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl">
+        <div className="flex items-center justify-end">
           <button
             className="text-slate-500"
             onClick={onClose}
@@ -778,8 +807,47 @@ function BottomSheet({ children, onClose }) {
             <span className="material-symbols-outlined text-2xl">close</span>
           </button>
         </div>
-        <div className="space-y-4 overflow-y-auto">{children}</div>
+        <div className="space-y-4">{children}</div>
       </div>
     </div>
   );
+}
+
+
+
+
+
+
+
+
+function resolveSummaryPeriod(rangeKey) {
+  const today = new Date();
+  const end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  let start;
+  switch (rangeKey) {
+    case "week":
+      start = new Date(end);
+      start.setDate(end.getDate() - 6);
+      break;
+    case "month":
+      start = new Date(end);
+      start.setDate(end.getDate() - 29);
+      break;
+    case "year":
+      start = new Date(end);
+      start.setFullYear(end.getFullYear() - 1);
+      start.setDate(start.getDate() + 1);
+      break;
+    default:
+      return null;
+  }
+  return {
+    fromDate: start.toISOString().slice(0, 10),
+    toDate: end.toISOString().slice(0, 10),
+  };
+}
+
+function getSummaryRangeLabel(rangeKey) {
+  const option = SUMMARY_RANGE_OPTIONS.find((item) => item.key === rangeKey);
+  return option ? option.label : "기간";
 }
