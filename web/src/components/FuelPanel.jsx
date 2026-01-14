@@ -1,6 +1,8 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import api from "../api/client";
+import PanelTabs from "./PanelTabs";
 
+// --- Constants ---
 const RANGE_FILTERS = [
   { key: "1m", label: "최근 1개월", months: 1 },
   { key: "3m", label: "최근 3개월", months: 3 },
@@ -16,6 +18,8 @@ const SUMMARY_RANGE_OPTIONS = [
 ];
 
 const INPUT_CLASS = "block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100";
+const PRIMARY_BUTTON = "inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-blue-700 disabled:opacity-60";
+const SECONDARY_BUTTON = "inline-flex w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60";
 
 const defaultForm = (vehicle) => ({
   date: new Date().toISOString().slice(0, 10),
@@ -26,7 +30,7 @@ const defaultForm = (vehicle) => ({
 });
 
 export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
-
+  const [activeTab, setActiveTab] = useState("summary");
   const [records, setRecords] = useState([]);
   const [filteredRecords, setFilteredRecords] = useState([]);
   const [rangeFilter, setRangeFilter] = useState("3m");
@@ -37,45 +41,22 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  const isSummaryTab = activeTab === "summary";
+
+  // --- Effects ---
   useEffect(() => {
-    if (!vehicle) return;
-    setFormValues(defaultForm(vehicle));
-  }, [vehicle]);
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [vehicle?.id, activeTab]);
 
   useEffect(() => {
-    if (!vehicle) return;
-    fetchRecords();
+    if (vehicle) fetchRecords();
   }, [vehicle]);
 
   useEffect(() => {
     applyFilters();
   }, [records, rangeFilter, onlyFull]);
 
-  const summaryRecords = useMemo(() => {
-    const period = resolveSummaryPeriod(summaryRange);
-    if (!period) return records;
-    return records.filter((item) => {
-      const dateKey = String(item.date).slice(0, 10);
-      return dateKey >= period.fromDate && dateKey <= period.toDate;
-    });
-  }, [records, summaryRange]);
-
-  const summaryStats = useMemo(() => {
-    if (!summaryRecords.length) {
-      return { totalCost: 0, count: 0, avgCost: 0, lastRecord: null };
-    }
-    const totalCost = summaryRecords.reduce(
-      (sum, item) => sum + Number(item.price_total || 0),
-      0,
-    );
-    const count = summaryRecords.length;
-    const avgCost = Math.round(totalCost / count);
-    const sorted = [...summaryRecords].sort(
-      (a, b) => new Date(b.date) - new Date(a.date),
-    );
-    return { totalCost, count, avgCost, lastRecord: sorted[0] };
-  }, [summaryRecords]);
-
+  // --- Logic ---
   const fetchRecords = async () => {
     setLoading(true);
     try {
@@ -104,28 +85,31 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
     setFilteredRecords(list);
   };
 
-  const summary = useMemo(() => {
-    if (!filteredRecords.length) {
-      return {
-        totalCost: 0,
-        totalLiters: 0,
-        avgPricePerLiter: 0,
-        lastFill: null,
-      };
-    }
-    const totalCost = filteredRecords.reduce((sum, item) => sum + Number(item.price_total || 0), 0);
-    const totalLiters = filteredRecords.reduce((sum, item) => sum + Number(item.liters || 0), 0);
-    const avgPricePerLiter = totalLiters ? Math.round(totalCost / totalLiters) : 0;
-    const lastFill = filteredRecords[0];
-    return { totalCost, totalLiters, avgPricePerLiter, lastFill };
-  }, [filteredRecords]);
+  const summaryStats = useMemo(() => {
+    const period = resolveSummaryPeriod(summaryRange);
+    const summaryList = period 
+      ? records.filter(item => {
+          const d = String(item.date).slice(0, 10);
+          return d >= period.fromDate && d <= period.toDate;
+        })
+      : records;
+
+    if (!summaryList.length) return { totalCost: 0, count: 0, avgCost: 0, lastRecord: null };
+    
+    const totalCost = summaryList.reduce((sum, item) => sum + Number(item.price_total || 0), 0);
+    const count = summaryList.length;
+    const sorted = [...summaryList].sort((a, b) => new Date(b.date) - new Date(a.date));
+    
+    return { 
+      totalCost, 
+      count, 
+      avgCost: Math.round(totalCost / count), 
+      lastRecord: sorted[0] 
+    };
+  }, [records, summaryRange]);
 
   const handleSubmit = async () => {
     if (!vehicle) return;
-    if (!formValues.date || !formValues.liters || !formValues.price_total || !formValues.odo_km) {
-      alert("모든 필수 항목을 입력해주세요.");
-      return;
-    }
     const payload = {
       vehicle_id: vehicle.id,
       date: formValues.date,
@@ -141,390 +125,273 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
         await api.post("/fuel/add", payload);
       }
       setFormModal({ open: false, mode: "create" });
-      setFormValues(defaultForm(vehicle));
-      await Promise.all([fetchRecords(), fetchStats()]);
+      fetchRecords();
       onCostDataChanged?.();
     } catch (error) {
-      console.error("주유 기록 저장 중 오류", error);
-      alert("주유 기록을 저장하지 못했습니다.");
+      alert("기록 저장에 실패했습니다.");
     }
   };
 
   const handleDelete = async (record) => {
-    if (!record) return;
-    if (!window.confirm("이 주유 기록을 삭제하시겠습니까?")) return;
+    if (!record || !window.confirm("이 주유 기록을 삭제하시겠습니까?")) return;
     try {
       await api.delete(`/fuel/${record.id}`);
-      await Promise.all([fetchRecords(), fetchStats()]);
+      fetchRecords();
       onCostDataChanged?.();
     } catch (error) {
-      console.error("주유 기록 삭제 중 오류", error);
-      alert("삭제에 실패했습니다. 잠시 뒤 다시 시도해주세요.");
+      alert("삭제에 실패했습니다.");
     }
   };
 
-  const openCreate = () => {
-    setFormValues(defaultForm(vehicle));
-    setFormModal({ open: true, mode: "create" });
-  };
-
-  const openEdit = (record) => {
-    setFormValues({
-      date: record.date,
-      liters: record.liters != null ? String(record.liters) : "",
-      price_total: record.price_total != null ? String(record.price_total) : "",
-      odo_km: record.odo_km != null ? String(record.odo_km) : "",
-      is_full: !!record.is_full,
-    });
-    setFormModal({ open: true, mode: "edit", recordId: record.id });
-  };
-
+  // --- Render ---
   return (
-    <div className="pb-28 space-y-6">
-      <section className="space-y-4 rounded-2xl border border-slate-200 bg-surface-light p-5 shadow-sm">
-        <div className="space-y-4">
-          <div>
-            <h1 className="text-xl font-bold text-slate-900">주유 관리</h1>
-            <p className="text-sm text-slate-600">주유 이력을 추가하고 비용 변화를 확인해보세요.</p>
+    <div className="pb-28">
+      {/* 1. Header Section (MaintenancePanel 스타일 적용) */}
+      <div className="px-4 pt-4">
+        <section className="rounded-3xl border border-border-light bg-surface-light p-6 shadow-card">
+          <div className="space-y-2">
+            <h1 className="text-2xl font-bold text-text-light">주유 이력을 한눈에 확인하세요</h1>
+            <p className="text-sm text-subtext-light">주유 기록을 추가하고 지표를 확인하세요.</p>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mt-4">
             <button
-              type="button"
-              className="flex w-full items-center justify-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 sm:w-auto"
-              onClick={openCreate}
+              className="flex w-full items-center justify-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-primary/90 md:w-auto"
+              onClick={() => { setFormValues(defaultForm(vehicle)); setFormModal({ open: true, mode: "create" }); }}
             >
               <span className="material-symbols-outlined text-base">add</span>
               주유 기록 추가
             </button>
-            <label className="flex items-center gap-2 text-sm text-slate-600">
-              <span className="font-semibold text-slate-800">조회 기간</span>
-              <select
-                value={summaryRange}
-                onChange={(e) => setSummaryRange(e.target.value)}
-                className="rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-              >
-                {SUMMARY_RANGE_OPTIONS.map((option) => (
-                  <option key={option.key} value={option.key}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
           </div>
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
-            <SummaryCard
-              title={`${getSummaryRangeLabel(summaryRange)} 총 주유비`}
-              value={summaryStats.totalCost ? `${summaryStats.totalCost.toLocaleString()} 원` : "0 원"}
-              caption={`${summaryStats.count}건의 주유 기록`}
-            />
-            <SummaryCard
-              title="주유 건수"
-              value={`${summaryStats.count}건`}
-              caption="선택한 기간 기준"
-            />
-            <SummaryCard
-              title="마지막 주유일"
-              value={summaryStats.lastRecord?.date || "-"}
-              caption={summaryStats.lastRecord ? `${summaryStats.lastRecord.liters}L · ${Number(summaryStats.lastRecord.price_total || 0).toLocaleString()} 원` : "최근 주유 기록이 없습니다"}
-            />
-            <SummaryCard
-              title="평균 주유비"
-              value={summaryStats.avgCost ? `${summaryStats.avgCost.toLocaleString()} 원` : "0 원"}
-              caption={summaryStats.count ? `${summaryStats.count}건 기준` : "기록 없음"}
-            />
-          </div>
-        </div>
-      </section>
+        </section>
+      </div>
 
-      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2">
-          {RANGE_FILTERS.map((filter) => (
-            <button
-              key={filter.key}
-              className={`rounded-full px-3 py-1 text-sm font-semibold transition ${
-                rangeFilter === filter.key ? "bg-blue-600 text-white" : "border border-slate-200 text-slate-600"
-              }`}
-              onClick={() => setRangeFilter(filter.key)}
-            >
-              {filter.label}
-            </button>
-          ))}
-          <label className="ml-auto inline-flex items-center gap-2 text-xs text-slate-600">
-            <input
-              type="checkbox"
-              checked={onlyFull}
-              onChange={(e) => setOnlyFull(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-            />
-            가득 주유만 보기
-          </label>
-        </div>
-      </section>
+      {/* 2. Tabs */}
+      <PanelTabs
+        tabs={[
+          { key: "summary", label: "요약보기", icon: "insights" },
+          { key: "details", label: "상세보기", icon: "list_alt" },
+        ]}
+        activeKey={activeTab}
+        onChange={setActiveTab}
+      />
 
-      <section className="space-y-3">
-        {loading ? (
-          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-6 text-center text-sm text-slate-500 shadow-sm">
-            데이터를 불러오는 중입니다...
-          </div>
-        ) : filteredRecords.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-6 text-center text-sm text-slate-500 shadow-sm">
-            조건에 맞는 주유 기록이 없습니다. 새 기록을 추가해보세요.
+      {/* 3. Content Body (여백 최적화) */}
+      <div className="space-y-6 px-4">
+        {isSummaryTab ? (
+          <div className="space-y-2">
+            {/* 조회 기간 선택 (탭 바로 아래 배치) */}
+            <div className="flex justify-end pt-1">
+              <label className="flex items-center gap-2 text-sm text-subtext-light bg-white px-3 py-1.5 rounded-full border border-border-light shadow-sm">
+                <span className="font-semibold text-text-light">조회 기간</span>
+                <select
+                  value={summaryRange}
+                  onChange={(e) => setSummaryRange(e.target.value)}
+                  className="bg-transparent text-sm text-text-light focus:outline-none"
+                >
+                  {SUMMARY_RANGE_OPTIONS.map((opt) => (
+                    <option key={opt.key} value={opt.key}>{opt.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            {/* 통계 카드 */}
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
+              <SummaryCard 
+                title={`${getSummaryRangeLabel(summaryRange)} 총 주유비`} 
+                value={`${summaryStats.totalCost.toLocaleString()} 원`} 
+              />
+              <SummaryCard 
+                title="주유 건수" 
+                value={`${summaryStats.count}건`} 
+                caption="선택한 기간 기준" 
+              />
+              <SummaryCard 
+                title="마지막 주유일" 
+                value={summaryStats.lastRecord?.date || "-"} 
+                caption={summaryStats.lastRecord ? `${summaryStats.lastRecord.liters}L 충전` : "기록 없음"} 
+              />
+              <SummaryCard 
+                title="평균 주유비" 
+                value={`${summaryStats.avgCost.toLocaleString()} 원`} 
+                caption={summaryStats.count ? `${summaryStats.count}건 기준` : "기록 없음"} 
+              />
+            </div>
           </div>
         ) : (
-          filteredRecords.map((record) => (
-            <FuelRecordCard
-              key={record.id}
-              record={record}
-              onView={() => setSelectedRecord(record)}
-              onEdit={() => openEdit(record)}
-              onDelete={() => handleDelete(record)}
-            />
-          ))
+          <>
+            {/* 상세보기 필터 */}
+            <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="flex flex-wrap gap-1.5">
+                {RANGE_FILTERS.map((f) => (
+                  <button
+                    key={f.key}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold transition ${rangeFilter === f.key ? "bg-slate-900 text-white" : "border border-slate-200 text-slate-500 hover:bg-slate-50"}`}
+                    onClick={() => setRangeFilter(f.key)}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+              <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={onlyFull}
+                  onChange={(e) => setOnlyFull(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                가득 주유만
+              </label>
+            </section>
+            
+            {/* 레코드 리스트 */}
+            <section className="space-y-3">
+              {loading ? (
+                <div className="p-6 text-center text-sm text-slate-500">불러오는 중...</div>
+              ) : filteredRecords.length === 0 ? (
+                <div className="p-6 text-center text-sm text-slate-500">기록이 없습니다.</div>
+              ) : (
+                filteredRecords.map((r) => (
+                  <FuelRecordCard key={r.id} record={r} onView={() => setSelectedRecord(r)} />
+                ))
+              )}
+            </section>
+          </>
         )}
-      </section>
+      </div>
 
+      {/* --- Modals & Sheets --- */}
       {formModal.open && (
         <Modal
           title={formModal.mode === "edit" ? "주유 기록 수정" : "주유 기록 추가"}
           onClose={() => setFormModal({ open: false, mode: "create" })}
-          actions={
-            <div className="space-y-3">
-              <button className="w-full rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700" onClick={handleSubmit}>
-                저장하기
-              </button>
-              <button
-                className="w-full rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                onClick={() => setFormModal({ open: false, mode: "create" })}
-              >
-                취소
-              </button>
-            </div>
-          }
+          actions={<div className="space-y-3"><button className={PRIMARY_BUTTON} onClick={handleSubmit}>저장하기</button><button className={SECONDARY_BUTTON} onClick={() => setFormModal({ open: false })}>취소</button></div>}
         >
           <div className="space-y-3">
-            <input
-              type="date"
-              className={INPUT_CLASS}
-              value={formValues.date}
-              onChange={(e) => setFormValues((prev) => ({ ...prev, date: e.target.value }))}
-              required
-            />
-            <input
-              type="number"
-              className={INPUT_CLASS}
-              placeholder="주유량 (L)"
-              value={formValues.liters}
-              onChange={(e) => setFormValues((prev) => ({ ...prev, liters: e.target.value }))}
-              required
-            />
-            <input
-              type="number"
-              className={INPUT_CLASS}
-              placeholder="총 금액 (원)"
-              value={formValues.price_total}
-              onChange={(e) => setFormValues((prev) => ({ ...prev, price_total: e.target.value }))}
-              required
-            />
-            <input
-              type="number"
-              className={INPUT_CLASS}
-              placeholder="주행거리 (km)"
-              value={formValues.odo_km}
-              onChange={(e) => setFormValues((prev) => ({ ...prev, odo_km: e.target.value }))}
-              required
-            />
-            <label className="inline-flex items-center gap-2 text-sm text-slate-600">
-              <input
-                type="checkbox"
-                checked={formValues.is_full}
-                onChange={(e) => setFormValues((prev) => ({ ...prev, is_full: e.target.checked }))}
-                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-              />
-              만땅 주유
+            <input type="date" className={INPUT_CLASS} value={formValues.date} onChange={(e) => setFormValues(p => ({ ...p, date: e.target.value }))} />
+            <input type="number" className={INPUT_CLASS} placeholder="주유량 (L)" value={formValues.liters} onChange={(e) => setFormValues(p => ({ ...p, liters: e.target.value }))} />
+            <input type="number" className={INPUT_CLASS} placeholder="총 금액 (원)" value={formValues.price_total} onChange={(e) => setFormValues(p => ({ ...p, price_total: e.target.value }))} />
+            <input type="number" className={INPUT_CLASS} placeholder="주행거리 (km)" value={formValues.odo_km} onChange={(e) => setFormValues(p => ({ ...p, odo_km: e.target.value }))} />
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <input type="checkbox" checked={formValues.is_full} onChange={(e) => setFormValues(p => ({ ...p, is_full: e.target.checked }))} /> 만땅 주유
             </label>
           </div>
         </Modal>
       )}
 
       {selectedRecord && (
-        <FuelDetailSheet
-          record={selectedRecord}
-          onClose={() => setSelectedRecord(null)}
-          onEdit={() => {
-            openEdit(selectedRecord);
-            setSelectedRecord(null);
-          }}
-          onDelete={() => {
-            handleDelete(selectedRecord);
-            setSelectedRecord(null);
-          }}
-        />
+        <BottomSheet onClose={() => setSelectedRecord(null)}>
+          <div className="space-y-4">
+            <InfoRow label="주유 날짜" value={selectedRecord.date} />
+            <div className="grid grid-cols-2 gap-3">
+              <InfoRow label="주유량" value={`${selectedRecord.liters} L`} />
+              <InfoRow label="금액" value={`${Number(selectedRecord.price_total).toLocaleString()} 원`} />
+              <InfoRow label="주행거리" value={`${Number(selectedRecord.odo_km).toLocaleString()} km`} />
+              <InfoRow label="만땅" value={selectedRecord.is_full ? "예" : "아니요"} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button className={SECONDARY_BUTTON} onClick={() => { 
+                setFormValues({ ...selectedRecord, liters: String(selectedRecord.liters), price_total: String(selectedRecord.price_total), odo_km: String(selectedRecord.odo_km) }); 
+                setFormModal({ open: true, mode: "edit", recordId: selectedRecord.id });
+                setSelectedRecord(null);
+              }}>수정</button>
+              <button className="rounded-xl bg-red-50 text-red-600 text-sm font-semibold" onClick={() => { handleDelete(selectedRecord); setSelectedRecord(null); }}>삭제</button>
+            </div>
+          </div>
+        </BottomSheet>
       )}
     </div>
   );
 }
 
-function resolveRange(rangeKey) {
-  const target = RANGE_FILTERS.find((item) => item.key === rangeKey);
-  if (!target || !target.months) return null;
-  const end = new Date();
-  const start = new Date();
-  start.setMonth(start.getMonth() - target.months);
-  return {
-    fromDate: start.toISOString().slice(0, 10),
-    toDate: end.toISOString().slice(0, 10),
-  };
-}
-
-function SummaryCard({ title, value, caption }) {
+// --- Sub-components ---
+function SummaryCard({ title, value, caption, icon = "insights" }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</p>
-      <p className="mt-2 text-[16px] font-bold text-slate-900">{value}</p>
-      {caption ? <p className="mt-1 text-[10px] text-slate-500">{caption}</p> : null}
+    <div className="flex items-center gap-3 rounded-2xl border border-border-light bg-white p-4 shadow-sm">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <span className="material-symbols-outlined text-lg">{icon}</span>
+      </div>
+      <div>
+        <p className="text-xs font-semibold text-subtext-light uppercase">{title}</p>
+        <p className="text-xl font-bold text-text-light">{value}</p>
+        {caption && <p className="text-[11px] text-subtext-light">{caption}</p>}
+      </div>
     </div>
   );
 }
 
-function FuelRecordCard({ record, onView, onEdit, onDelete }) {
-  const cost = Number(record.price_total || 0);
-  const liters = Number(record.liters || 0);
-  const unitPrice = liters ? Math.round(cost / liters) : null;
+function FuelRecordCard({ record, onView }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-400 hover:shadow-md">
-      <div className="flex items-start justify-between gap-3">
+    <button className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm hover:border-blue-400" onClick={onView}>
+      <div className="flex justify-between items-start">
         <div>
           <p className="text-xs text-slate-500">{record.date}</p>
-          <p className="mt-1 text-base font-semibold text-slate-900">{liters.toFixed(1)} L · {cost.toLocaleString()} 원</p>
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-600">
-            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 font-semibold">{record.odo_km.toLocaleString()} km</span>
-            <span className={`rounded-full px-2.5 py-0.5 font-semibold ${record.is_full ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"}`}>
-              {record.is_full ? "만땅" : "부분"}
-            </span>
-            {unitPrice ? <span>{unitPrice.toLocaleString()} 원/L</span> : null}
-          </div>
+          <p className="font-semibold text-slate-900">{record.liters} L · {Number(record.price_total).toLocaleString()} 원</p>
+          <p className="text-xs text-slate-400 mt-1">{Number(record.odo_km).toLocaleString()} km · {record.is_full ? "가득" : "부분"}</p>
         </div>
-        <div className="flex flex-col gap-2 text-sm text-blue-600">
-          <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:border-blue-500 hover:text-blue-600" onClick={onView}>
-            상세
-          </button>
-          <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:border-blue-500 hover:text-blue-600" onClick={onEdit}>
-            수정
-          </button>
-          <button type="button" className="rounded-full border border-red-200 px-3 py-1 text-xs text-red-600 hover:bg-red-50" onClick={onDelete}>
-            삭제
-          </button>
-        </div>
+        <span className="material-symbols-outlined text-slate-400">chevron_right</span>
       </div>
+    </button>
+  );
+}
+
+function InfoRow({ label, value }) {
+  return (
+    <div>
+      <p className="text-[11px] text-slate-500 uppercase">{label}</p>
+      <p className="text-sm font-semibold text-slate-800">{value}</p>
     </div>
   );
 }
 
 function Modal({ title, onClose, children, actions }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 sm:items-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
-          <button className="text-slate-500" onClick={onClose} aria-label="모달 닫기">
-            <span className="material-symbols-outlined text-2xl">close</span>
-          </button>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <button onClick={onClose}><span className="material-symbols-outlined">close</span></button>
         </div>
-        <div className="mt-4 space-y-3">{children}</div>
+        {children}
         <div className="mt-6">{actions}</div>
       </div>
     </div>
   );
 }
 
-function FuelDetailSheet({ record, onClose, onEdit, onDelete }) {
-  const cost = Number(record.price_total || 0);
-  const liters = Number(record.liters || 0);
-  const unitPrice = liters ? Math.round(cost / liters) : null;
+function BottomSheet({ children, onClose }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl">
-        <div className="flex items-center justify-end">
-          <button className="text-slate-500" onClick={onClose} aria-label="상세 닫기">
-            <span className="material-symbols-outlined text-2xl">close</span>
-          </button>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center">
+      <div className="w-full max-w-lg rounded-t-3xl sm:rounded-3xl bg-white p-6 shadow-2xl">
+        <div className="flex justify-end mb-2">
+          <button onClick={onClose}><span className="material-symbols-outlined">close</span></button>
         </div>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <p className="text-xs text-slate-500">주유 날짜</p>
-            <p className="text-lg font-semibold text-slate-900">{record.date}</p>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <InfoRow label="주유량" value={`${liters.toFixed(1)} L`} />
-            <InfoRow label="총 금액" value={`${cost.toLocaleString()} 원`} />
-            <InfoRow label="주행거리" value={`${record.odo_km.toLocaleString()} km`} />
-            <InfoRow label="만땅 여부" value={record.is_full ? "예" : "아니요"} />
-            <InfoRow label="리터당 가격" value={unitPrice ? `${unitPrice.toLocaleString()} 원` : "-"} />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:border-blue-500 hover:text-blue-600"
-              onClick={onEdit}
-            >
-              수정하기
-            </button>
-            <button
-              type="button"
-              className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-100"
-              onClick={onDelete}
-            >
-              삭제하기
-            </button>
-          </div>
-        </div>
+        {children}
       </div>
     </div>
   );
 }
 
-function InfoRow({ label, value }) {
-  return (
-    <div className="space-y-1">
-      <p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="text-sm font-semibold text-slate-800">{value}</p>
-    </div>
-  );
+// --- Utils ---
+function resolveRange(rangeKey) {
+  const target = RANGE_FILTERS.find(f => f.key === rangeKey);
+  if (!target || !target.months) return null;
+  const end = new Date();
+  const start = new Date();
+  start.setMonth(start.getMonth() - target.months);
+  return { fromDate: start.toISOString().slice(0, 10), toDate: end.toISOString().slice(0, 10) };
 }
 
-
-
-
-
 function resolveSummaryPeriod(rangeKey) {
-  const today = new Date();
-  const end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  let start;
-  switch (rangeKey) {
-    case "week":
-      start = new Date(end);
-      start.setDate(end.getDate() - 6);
-      break;
-    case "month":
-      start = new Date(end);
-      start.setDate(end.getDate() - 29);
-      break;
-    case "year":
-      start = new Date(end);
-      start.setFullYear(end.getFullYear() - 1);
-      start.setDate(start.getDate() + 1);
-      break;
-    default:
-      return null;
-  }
-  return {
-    fromDate: start.toISOString().slice(0, 10),
-    toDate: end.toISOString().slice(0, 10),
-  };
+  const end = new Date();
+  let start = new Date();
+  if (rangeKey === "week") start.setDate(end.getDate() - 7);
+  else if (rangeKey === "month") start.setDate(end.getDate() - 30);
+  else if (rangeKey === "year") start.setFullYear(end.getFullYear() - 1);
+  else return null;
+  return { fromDate: start.toISOString().slice(0, 10), toDate: end.toISOString().slice(0, 10) };
 }
 
 function getSummaryRangeLabel(rangeKey) {
-  const option = SUMMARY_RANGE_OPTIONS.find((item) => item.key === rangeKey);
-  return option ? option.label : "기간";
+  return SUMMARY_RANGE_OPTIONS.find(o => o.key === rangeKey)?.label || "기간";
 }
-

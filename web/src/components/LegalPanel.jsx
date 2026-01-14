@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import api from "../api/client";
+import PanelTabs from "./PanelTabs";
 
 const DEFAULT_FORM = {
   insurance_company: "",
@@ -27,29 +28,7 @@ const SECTION_LABELS = {
   inspection: "정기검사",
   registration: "차량 등록",
   memo: "메모",
-};
-
-const SECTION_FIELD_MAP = {
-  insurance: [
-    "insurance_company",
-    "insurance_number",
-    "insurance_expiry",
-    "insurance_fee",
-  ],
-  tax: ["tax_year", "tax_amount", "tax_due_date", "tax_paid"],
-  inspection: [
-    "inspection_center",
-    "inspection_date",
-    "next_inspection_date",
-    "inspection_result",
-  ],
-  registration: [
-    "registration_number",
-    "registration_office",
-    "registration_date",
-    "registration_type",
-  ],
-  memo: ["memo"],
+  all: "전체 법적 정보" // 기본값 추가
 };
 
 const TABS = [
@@ -89,7 +68,9 @@ const InputField = ({ label, value, onChange, type = "text", placeholder }) => (
 );
 
 export default function LegalPanel({ vehicle }) {
+  const [viewTab, setViewTab] = useState("summary");
   const [tab, setTab] = useState("insurance");
+  const isSummaryView = viewTab === "summary";
   const [form, setForm] = useState(DEFAULT_FORM);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -109,30 +90,23 @@ export default function LegalPanel({ vehicle }) {
       const res = await api.get("/legal/list", { params: { vehicleId: vehicle.id } });
       const list = Array.isArray(res.data) ? res.data : [];
       setRecords(list);
+      
       if (!list.length) {
         setActiveRecordId(null);
         setForm(DEFAULT_FORM);
         return;
       }
+      
       const targetId = focusId ?? activeRecordIdRef.current ?? list[0].id;
       const target = list.find((item) => item.id === targetId) || list[0];
       setActiveRecordId(target.id);
       setForm({ ...DEFAULT_FORM, ...target });
     } catch (error) {
-      console.error("법적 정보를 불러오는 중 오류가 발생했습니다.", error);
-      setMessageTone("error");
-      setMessage("법적 정보를 불러오는 중 오류가 발생했습니다.");
-      setTimeout(() => setMessage(""), 2500);
+      console.error("Error loading records", error);
     }
   };
 
   useEffect(() => {
-    if (!vehicle?.id) {
-      setRecords([]);
-      setActiveRecordId(null);
-      setForm(DEFAULT_FORM);
-      return;
-    }
     loadRecords();
   }, [vehicle]);
 
@@ -140,14 +114,13 @@ export default function LegalPanel({ vehicle }) {
     activeRecordIdRef.current = activeRecordId;
   }, [activeRecordId]);
 
-
   const sectionMeta = useMemo(() => TABS.find((item) => item.key === tab) ?? TABS[0], [tab]);
 
   const updateField = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const saveData = async (sectionKey) => {
+  const saveData = async (sectionKey = "all") => {
     if (!vehicle) {
       setMessageTone("error");
       setMessage("차량을 먼저 선택해주세요.");
@@ -163,26 +136,28 @@ export default function LegalPanel({ vehicle }) {
         vehicle_id: vehicle.id,
         tax_paid: Boolean(form.tax_paid),
       };
+      
       let response;
       if (payload.id) {
         response = await api.put(`/legal/update/${payload.id}`, payload);
       } else {
         response = await api.post(`/legal/add`, payload);
       }
+      
       const savedRecord = response?.data || response;
       await loadRecords(savedRecord?.id ?? payload.id);
+      
       const label = SECTION_LABELS[sectionKey] || "법적 정보";
       setMessageTone("success");
       setMessage(`${label} 정보가 저장되었습니다.`);
     } catch (error) {
       setMessageTone("error");
-      setMessage("저장 중 오류가 발생했습니다. 다시 시도해주세요.");
+      setMessage("저장 중 오류가 발생했습니다.");
     } finally {
       setLoading(false);
       setTimeout(() => setMessage(""), 2500);
     }
   };
-
 
   const renderInsurance = () => (
     <div className="grid gap-4 sm:grid-cols-2">
@@ -191,18 +166,12 @@ export default function LegalPanel({ vehicle }) {
       <InputField label="만기일" type="date" value={form.insurance_expiry} onChange={(v) => updateField("insurance_expiry", v)} />
       <InputField label="보험료" value={form.insurance_fee} onChange={(v) => updateField("insurance_fee", v)} placeholder="예: 120000" />
       <div className="sm:col-span-2 flex justify-end">
-        <button
-          type="button"
-          onClick={() => saveData("insurance")}
-          disabled={loading}
-          className={`rounded-full px-4 py-2 text-sm font-semibold text-white ${loading ? "bg-primary/40" : "bg-primary hover:bg-primary/90"}`}
-        >
+        <button type="button" onClick={() => saveData("insurance")} disabled={loading} className={`rounded-full px-4 py-2 text-sm font-semibold text-white ${loading ? "bg-primary/40" : "bg-primary hover:bg-primary/90"}`}>
           보험 정보 저장
         </button>
       </div>
     </div>
   );
-
 
   const renderTax = () => (
     <div className="grid gap-4 sm:grid-cols-2">
@@ -210,209 +179,169 @@ export default function LegalPanel({ vehicle }) {
       <InputField label="세액" value={form.tax_amount} onChange={(v) => updateField("tax_amount", v)} placeholder="예: 240000" />
       <InputField label="납부 기한" type="date" value={form.tax_due_date} onChange={(v) => updateField("tax_due_date", v)} />
       <label className="flex items-center gap-2 text-sm font-semibold text-text-light">
-        <input type="checkbox" checked={form.tax_paid} onChange={(e) => updateField("tax_paid", e.target.checked)} className="h-4 w-4 rounded border-border-light text-primary focus:ring-primary/40" />
+        <input type="checkbox" checked={form.tax_paid} onChange={(e) => updateField("tax_paid", e.target.checked)} className="h-4 w-4 rounded border-border-light text-primary" />
         납부 완료
       </label>
       <div className="sm:col-span-2 flex justify-end">
-        <button
-          type="button"
-          onClick={() => saveData("tax")}
-          disabled={loading}
-          className={`rounded-full px-4 py-2 text-sm font-semibold text-white ${loading ? "bg-primary/40" : "bg-primary hover:bg-primary/90"}`}
-        >
+        <button type="button" onClick={() => saveData("tax")} disabled={loading} className={`rounded-full px-4 py-2 text-sm font-semibold text-white ${loading ? "bg-primary/40" : "bg-primary hover:bg-primary/90"}`}>
           자동차세 정보 저장
         </button>
       </div>
     </div>
   );
 
-
   const renderInspection = () => (
     <div className="grid gap-4 sm:grid-cols-2">
       <InputField label="검사소" value={form.inspection_center} onChange={(v) => updateField("inspection_center", v)} placeholder="예: 카케어 자동차 검사소" />
       <InputField label="검사일" type="date" value={form.inspection_date} onChange={(v) => updateField("inspection_date", v)} />
       <InputField label="다음 검사일" type="date" value={form.next_inspection_date} onChange={(v) => updateField("next_inspection_date", v)} />
-      <InputField label="결과/메모" value={form.inspection_result} onChange={(v) => updateField("inspection_result", v)} placeholder="예: 이상 없음" />
+      <InputField label="결과/메모" value={form.inspection_result} onChange={(v) => updateField("inspection_result", v)} />
       <div className="sm:col-span-2 flex justify-end">
-        <button
-          type="button"
-          onClick={() => saveData("inspection")}
-          disabled={loading}
-          className={`rounded-full px-4 py-2 text-sm font-semibold text-white ${loading ? "bg-primary/40" : "bg-primary hover:bg-primary/90"}`}
-        >
+        <button type="button" onClick={() => saveData("inspection")} disabled={loading} className={`rounded-full px-4 py-2 text-sm font-semibold text-white ${loading ? "bg-primary/40" : "bg-primary hover:bg-primary/90"}`}>
           검사 정보 저장
         </button>
       </div>
     </div>
   );
 
-
   const renderRegistration = () => (
     <div className="grid gap-4 sm:grid-cols-2">
-      <InputField label="등록 번호" value={form.registration_number} onChange={(v) => updateField("registration_number", v)} placeholder="예: 12가3456" />
-      <InputField label="등록 기관" value={form.registration_office} onChange={(v) => updateField("registration_office", v)} placeholder="예: 강남구청" />
+      <InputField label="등록 번호" value={form.registration_number} onChange={(v) => updateField("registration_number", v)} />
+      <InputField label="등록 기관" value={form.registration_office} onChange={(v) => updateField("registration_office", v)} />
       <InputField label="등록일" type="date" value={form.registration_date} onChange={(v) => updateField("registration_date", v)} />
-      <InputField label="등록 유형" value={form.registration_type} onChange={(v) => updateField("registration_type", v)} placeholder="예: 자가용" />
+      <InputField label="등록 유형" value={form.registration_type} onChange={(v) => updateField("registration_type", v)} />
       <div className="sm:col-span-2 flex justify-end">
-        <button
-          type="button"
-          onClick={() => saveData("registration")}
-          disabled={loading}
-          className={`rounded-full px-4 py-2 text-sm font-semibold text-white ${loading ? "bg-primary/40" : "bg-primary hover:bg-primary/90"}`}
-        >
+        <button type="button" onClick={() => saveData("registration")} disabled={loading} className={`rounded-full px-4 py-2 text-sm font-semibold text-white ${loading ? "bg-primary/40" : "bg-primary hover:bg-primary/90"}`}>
           등록 정보 저장
         </button>
       </div>
     </div>
   );
 
-
   const renderMemo = () => (
     <div className="space-y-4">
-      <label className="flex flex-col gap-2">
-        <span className="text-sm font-semibold text-text-light">메모</span>
-        <textarea
-          value={form.memo ?? ""}
-          onChange={(e) => updateField("memo", e.target.value)}
-          rows={6}
-          className="rounded-xl border border-border-light bg-background-light px-3 py-3 text-sm text-text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-          placeholder="메모를 입력하세요."
-        />
-      </label>
+      <textarea
+        value={form.memo ?? ""}
+        onChange={(e) => updateField("memo", e.target.value)}
+        rows={6}
+        className="w-full rounded-xl border border-border-light bg-background-light px-3 py-3 text-sm focus:border-primary focus:outline-none"
+        placeholder="메모를 입력하세요."
+      />
       <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => saveData("memo")}
-          disabled={loading}
-          className={`rounded-full px-4 py-2 text-sm font-semibold text-white ${loading ? "bg-primary/40" : "bg-primary hover:bg-primary/90"}`}
-        >
+        <button type="button" onClick={() => saveData("memo")} disabled={loading} className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white">
           메모 저장
         </button>
       </div>
     </div>
   );
 
-
   const renderSection = () => {
     switch (tab) {
-      case "insurance":
-        return renderInsurance();
-      case "tax":
-        return renderTax();
-      case "inspection":
-        return renderInspection();
-      case "registration":
-        return renderRegistration();
-      case "memo":
-        return renderMemo();
-      default:
-        return null;
+      case "insurance": return renderInsurance();
+      case "tax": return renderTax();
+      case "inspection": return renderInspection();
+      case "registration": return renderRegistration();
+      case "memo": return renderMemo();
+      default: return null;
     }
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-background-light text-text-light">
-      <div className="space-y-6 px-4 py-6 pb-32">
-        <section className="rounded-2xl border border-border-light bg-surface-light p-5 shadow-card">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-subtext-light">차량 선택</p>
-              <h1 className="mt-1 text-xl font-bold text-text-light">{vehicle?.maker} {vehicle?.model}</h1>
-              <p className="text-sm text-subtext-light">등록 번호: {vehicle?.plate_no ?? "미등록"}</p>
-            </div>
-            <div className="flex flex-col items-end text-right text-sm text-subtext-light">
-              <span className="font-semibold text-text-light">마지막 저장 상태</span>
-              <span>{message && messageTone === "success" ? "방금 저장됨" : "확인 필요"}</span>
-            </div>
-          </div>
-        </section>
-
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {TABS.map((item) => {
-            const isActive = item.key === tab;
-            return (
-              <button
-                key={item.key}
-                onClick={() => setTab(item.key)}
-                type="button"
-                className={`flex h-10 shrink-0 items-center gap-2 rounded-full px-4 text-sm font-semibold transition ${isActive ? "bg-primary text-white shadow" : "bg-surface-light text-subtext-light border border-border-light"}`}
-              >
-                <span className="material-symbols-outlined text-base">{item.icon}</span>
-                {item.label}
-              </button>
-            );
-          })}
-        </div>
-
-        <SectionCard title={sectionMeta.label} description={sectionMeta.description} icon={sectionMeta.icon}>{renderSection()}</SectionCard>
-
-        {records.length ? (
-          <section className="space-y-4 rounded-2xl border border-border-light bg-surface-light p-5 shadow-card">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-base font-semibold text-text-light">저장된 기록</h2>
-                <p className="text-sm text-subtext-light">아래에서 불러오거나 삭제할 기록을 선택하세요.</p>
+    <div className="flex min-h-screen flex-col bg-background-light text-text-light 3pb-2">
+      <PanelTabs
+        tabs={[
+          { key: "summary", label: "요약보기", icon: "insights" },
+          { key: "details", label: "상세보기", icon: "list_alt" },
+        ]}
+        activeKey={viewTab}
+        onChange={setViewTab}
+      />
+      <div className="space-y-6 px-4 py-6">
+        {isSummaryView ? (
+          <section className="rounded-2xl border border-border-light bg-surface-light p-5 shadow-card">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                  <span className="material-symbols-outlined text-xl">gavel</span>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-subtext-light">차량 법적 정보</p>
+                  <h1 className="mt-1 text-xl font-bold text-text-light">{vehicle?.maker} {vehicle?.model}</h1>
+                  <p className="text-sm text-subtext-light">차량 번호: {vehicle?.plate_no ?? "정보 없음"}</p>
+                </div>
               </div>
-              <button
-                type="button"
-                className="rounded-full border border-border-light px-3 py-1 text-xs font-semibold text-subtext-light transition hover:text-primary"
-                onClick={() => loadRecords(activeRecordId)}
-                disabled={loading}
-              >
-                새로고침
-              </button>
-            </div>
-            <div className="space-y-3">
-              {records.map((record) => (
-                <button
-                  type="button"
-                  key={record.id}
-                  onClick={() => {
-                    setActiveRecordId(record.id);
-                    setForm({ ...DEFAULT_FORM, ...record });
-                  }}
-                  className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
-                    activeRecordId === record.id ? "border-primary bg-primary/5" : "border-border-light bg-white"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="space-y-1 text-sm">
-                      <p className="font-semibold text-text-light">{record.insurance_company || "보험 정보 미입력"}</p>
-                      <p className="text-xs text-subtext-light">보험 만기 {record.insurance_expiry || "-"}</p>
-                      <p className="text-xs text-subtext-light">검사 {record.next_inspection_date || "-"} · 세금 {record.tax_due_date || "-"}</p>
-                    </div>
-                    {activeRecordId === record.id ? (
-                      <span className="text-xs font-semibold text-primary">선택됨</span>
-                    ) : null}
-                  </div>
-                </button>
-              ))}
+              <div className="flex flex-col items-end text-right text-sm text-subtext-light">
+                <span className="font-semibold text-text-light">상태</span>
+                <span>{message && messageTone === "success" ? "방금 저장됨" : "확인 필요"}</span>
+              </div>
             </div>
           </section>
         ) : (
-          <p className="text-center text-sm text-subtext-light">저장된 기록이 없습니다.</p>
+          <>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {TABS.map((item) => (
+                <button
+                  key={item.key}
+                  onClick={() => setTab(item.key)}
+                  className={`flex h-10 shrink-0 items-center gap-2 rounded-full px-4 text-sm font-semibold transition ${tab === item.key ? "bg-primary text-white shadow" : "bg-surface-light text-subtext-light border border-border-light"}`}
+                >
+                  <span className="material-symbols-outlined text-base">{item.icon}</span>
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
+            <SectionCard title={sectionMeta.label} description={sectionMeta.description} icon={sectionMeta.icon}>
+              {renderSection()}
+            </SectionCard>
+
+            {records.length > 0 ? (
+              <section className="space-y-4 rounded-2xl border border-border-light bg-surface-light p-5 shadow-card">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-base font-semibold text-text-light">저장된 기록</h2>
+                  <button onClick={() => loadRecords()} className="text-xs text-subtext-light hover:text-primary">새로고침</button>
+                </div>
+                <div className="space-y-3">
+                  {records.map((record) => (
+                    <button
+                      key={record.id}
+                      onClick={() => {
+                        setActiveRecordId(record.id);
+                        setForm({ ...DEFAULT_FORM, ...record });
+                      }}
+                      className={`w-full rounded-2xl border px-4 py-3 text-left transition ${activeRecordId === record.id ? "border-primary bg-primary/5" : "border-border-light bg-white"}`}
+                    >
+                      <div className="flex justify-between items-center">
+                        <div className="text-sm">
+                          <p className="font-semibold">{record.insurance_company || "기록 정보"}</p>
+                          <p className="text-xs text-subtext-light">만기: {record.insurance_expiry || "-"}</p>
+                        </div>
+                        {activeRecordId === record.id && <span className="text-xs font-semibold text-primary">선택됨</span>}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ) : (
+              <p className="text-center text-sm text-subtext-light">저장된 기록이 없습니다.</p>
+            )}
+          </>
         )}
       </div>
 
+      {/* 하단 플로팅 버튼 */}
       <div className="fixed bottom-0 left-0 right-0 border-t border-border-light bg-surface-light/95 px-4 py-3 backdrop-blur">
-        <div className="mx-auto flex max-w-xl flex-col gap-3">
+        <div className="mx-auto flex max-w-xl flex-col gap-2">
           <button
-            type="button"
-            onClick={() => saveData()}
+            onClick={() => saveData(tab)}
             disabled={loading || !vehicle}
             className={`flex h-12 items-center justify-center rounded-xl text-sm font-semibold transition ${loading || !vehicle ? "bg-primary/40 text-white" : "bg-primary text-white hover:bg-primary/90"}`}
           >
-            {loading ? "저장 중..." : "정보 저장"}
+            {loading ? "저장 중..." : "현재 섹션 정보 저장"}
           </button>
-          {message && (
-            <p className={`text-center text-sm ${messageTone === "success" ? "text-emerald-600" : "text-red-600"}`}>{message}</p>
-          )}
+          {message && <p className={`text-center text-xs ${messageTone === "success" ? "text-emerald-600" : "text-red-600"}`}>{message}</p>}
         </div>
       </div>
     </div>
   );
 }
-
-
-
-
