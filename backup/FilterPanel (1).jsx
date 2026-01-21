@@ -1,5 +1,4 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
 
 const CATEGORY = "필터";
 
@@ -20,75 +19,13 @@ const toIntOrNull = (v) => {
 
 const isYmd = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
 
-const formatNumber = (value) => {
-  if (value === undefined || value === null) return "-";
-  const num = Number(value);
-  if (!Number.isFinite(num)) return "-";
-  return num.toLocaleString();
-};
 
-const formatYmd = (value) => {
-  if (!isYmd(value)) return "-";
-  return value.replace(/-/g, ". ");
-};
-
-const computeDistanceStatus = ({ currentMileage, lastOdo, cycleKm }) => {
-  if (cycleKm == null) {
-    return { tone: "muted", message: "주행 주기가 설정되지 않았습니다." };
-  }
-  if (currentMileage == null) {
-    return { tone: "muted", message: "현재 주행거리를 불러올 수 없습니다." };
-  }
-  if (lastOdo == null) {
-    return { tone: "muted", message: "마지막 교체 주행거리가 없습니다." };
-  }
-
-  const used = Number(currentMileage) - Number(lastOdo);
-  const remain = Number(cycleKm) - used;
-  if (!Number.isFinite(used) || !Number.isFinite(remain)) {
-    return { tone: "muted", message: "주행거리 계산 중 오류가 발생했습니다." };
-  }
-  if (remain <= 0) {
-    return { tone: "danger", message: "즉시 교체가 필요합니다." };
-  }
-  if (remain <= Math.max(500, cycleKm * 0.2)) {
-    return { tone: "warn", message: `${Math.max(0, Math.round(remain)).toLocaleString()} km 이내 교체 권장` };
-  }
-  return { tone: "ok", message: `${Math.max(0, Math.round(remain)).toLocaleString()} km 여유가 있습니다.` };
-};
-
-const toneTextClass = (tone) => {
-  switch (tone) {
-    case "danger":
-      return "text-red-600";
-    case "warn":
-      return "text-amber-600";
-    case "ok":
-      return "text-emerald-600";
-    default:
-      return "text-subtext-light";
-  }
-};
-
-const toneProgressClass = (tone) => {
-  switch (tone) {
-    case "danger":
-      return "bg-red-500";
-    case "warn":
-      return "bg-amber-400";
-    case "ok":
-      return "bg-emerald-500";
-    default:
-      return "bg-primary/40";
-  }
-};
-
-
-function ItemCard({ item, state, onOpenDetail, onDelete, currentMileage, alertsEnabled = false, dueMessage, lastHistoryValue, lastHistoryDate }) {
+function ItemCard({ item, state, onChange, onSaveHistory, onSaveConfig, onOpenHistory, currentMileage, onDelete, alertsEnabled = false, dueMessage, lastHistoryValue, onToggle }) {
   const mode = state.mode || "distance";
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
+  const isCollapsed = Boolean(state.collapsed);
 
-  const statusData = useMemo(() => {
+  const statusNode = useMemo(() => {
     const parseOdoFromHistory = (v) => {
       if (v == null) return null;
       if (typeof v === "number" && Number.isFinite(v)) return v;
@@ -108,274 +45,258 @@ function ItemCard({ item, state, onOpenDetail, onDelete, currentMileage, alertsE
 
     if (mode === "distance") {
       const historyOdo = parseOdoFromHistory(lastHistoryValue);
-      const baseOdo = historyOdo;
-      const cycleValue = Number(state.cycleKm || 0);
-      if (cycleValue <= 0) {
-        return { tone: "muted", message: "주행 주기가 설정되지 않았습니다.", showProgress: false };
+      const baseOdo = historyOdo ?? toIntOrNull(state.lastOdo);
+      if (currentMileage != null && baseOdo != null && state.cycleKm) {
+        const used = Number(currentMileage) - Number(baseOdo);
+        const remain = Number(state.cycleKm || 0) - used;
+        if (!Number.isFinite(remain)) return "교체 정보를 입력해주세요.";
+        const isDue = remain <= 0;
+        const node = (
+          <span className={"whitespace-nowrap " + (isDue ? "text-red-600 font-semibold" : "text-gray-600")}>
+            {isDue ? "교체 시기 도래!" : `남은 주행거리: ${Math.max(remain, 0)} km`}
+          </span>
+        );
+        if (alertsEnabled && dueMessage && isDue) {
+          return (
+            <div className="flex flex-col gap-1">
+              {node}
+              <div className="rounded-md bg-yellow-100 px-3 py-2 text-xs font-semibold text-yellow-800">{dueMessage}</div>
+            </div>
+          );
+        }
+        return node;
       }
-      if (currentMileage == null) {
-        return { tone: "muted", message: "현재 주행거리를 불러올 수 없습니다.", showProgress: false };
-      }
-      if (baseOdo == null) {
-        return { tone: "muted", message: "마지막 교체 주행거리가 없습니다.", showProgress: false };
-      }
-      const used = Math.max(0, Number(currentMileage) - Number(baseOdo));
-      const remain = cycleValue - used;
-      if (!Number.isFinite(remain)) {
-        return { tone: "muted", message: "교체 정보를 입력해주세요.", showProgress: false };
-      }
-      const status = computeDistanceStatus({ currentMileage, lastOdo: baseOdo, cycleKm: cycleValue });
-      const tone = status.tone || (remain <= 0 ? "danger" : remain <= Math.max(500, cycleValue * 0.2) ? "warn" : "ok");
-      const message = status.message || (remain <= 0 ? "즉시 교체가 필요합니다." : `남은 주행거리: ${Math.max(remain, 0)} km`);
-      const percent = cycleValue > 0 ? Math.min(100, Math.max(0, (used / cycleValue) * 100)) : 0;
-      return {
-        tone,
-        message,
-        used,
-        cycleValue,
-        percent,
-        showProgress: true,
-        showAlert: alertsEnabled && dueMessage && tone === "danger",
-      };
     }
 
     if (mode === "time") {
-      const baseDate = parseDateFromHistory(lastHistoryValue);
+      const baseDate = isYmd(state.lastDate) ? state.lastDate : parseDateFromHistory(lastHistoryValue);
       if (baseDate && state.cycleMonths) {
         const last = new Date(baseDate);
         const now = new Date();
         const diffMonths = (now.getFullYear() - last.getFullYear()) * 12 + (now.getMonth() - last.getMonth());
         const remain = Number(state.cycleMonths || 0) - diffMonths;
-        if (!Number.isFinite(remain)) {
-          return { tone: "muted", message: "교체 정보를 입력해주세요.", showProgress: false };
-        }
+        if (!Number.isFinite(remain)) return "교체 정보를 입력해주세요.";
         const isDue = remain <= 0;
-        return {
-          tone: isDue ? "danger" : "ok",
-          message: isDue ? "교체 시기 도래!" : `남은 기간: ${Math.max(remain, 0)} 개월`,
-          showProgress: false,
-          showAlert: alertsEnabled && dueMessage && isDue,
-        };
+        const node = (
+          <span className={"whitespace-nowrap " + (isDue ? "text-red-600 font-semibold" : "text-gray-600")}>
+            {isDue ? "교체 시기 도래!" : `남은 기간: ${Math.max(remain, 0)} 개월`}
+          </span>
+        );
+        if (alertsEnabled && dueMessage && isDue) {
+          return (
+            <div className="flex flex-col gap-1">
+              {node}
+              <div className="rounded-md bg-yellow-100 px-3 py-2 text-xs font-semibold text-yellow-800">{dueMessage}</div>
+            </div>
+          );
+        }
+        return node;
       }
     }
 
-    return { tone: "muted", message: "교체 정보를 입력해주세요.", showProgress: false };
-  }, [mode, currentMileage, state.cycleKm, state.cycleMonths, alertsEnabled, dueMessage, lastHistoryValue]);
+    return "교체 정보를 입력해주세요.";
+  }, [mode, currentMileage, state.lastOdo, state.cycleKm, state.lastDate, state.cycleMonths, alertsEnabled, dueMessage, lastHistoryValue]);
 
-    return (
-      <div className="relative w-full rounded-2xl border border-border-light bg-surface-light p-4 text-left shadow-card">
-        <button
-          type="button"
-          onClick={() => onOpenDetail?.(item.key)}
-          className="w-full text-left transition hover:text-text-light"
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div className="space-y-1">
-              <h3 className="text-base font-semibold text-text-light">{state.kind}</h3>
-              <p className={`text-xs font-semibold ${toneTextClass(statusData.tone)}`}>{statusData.message}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className={`rounded-full bg-border-light/70 px-2 py-0.5 text-[11px] font-semibold ${toneTextClass(statusData.tone)}`}>
-                {statusData.tone === "danger" ? "교체 필요" : statusData.tone === "warn" ? "교체 임박" : statusData.tone === "ok" ? "정상" : "정보 없음"}
-              </span>
-              <button
-                type="button"
-                aria-label="삭제"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setConfirmOpen(true);
-                }}
-                className="flex h-7 w-7 items-center justify-center rounded-full text-subtext-light transition hover:text-red-600"
-              >
-                <span className="material-symbols-outlined text-lg">delete</span>
-              </button>
-            </div>
-          </div>
-          <p className="mt-2 text-xs text-subtext-light">
-            최종 교체일: {formatYmd(lastHistoryDate || (isYmd(lastHistoryValue) ? lastHistoryValue : null))}
-          </p>
-          {statusData.showAlert ? (
-            <div className="mt-2 rounded-md bg-yellow-100 px-3 py-2 text-[11px] font-semibold text-yellow-800">{dueMessage}</div>
-          ) : null}
-          {statusData.showProgress ? (
-            <div className="mt-2 space-y-1">
-              <div className="h-2 w-full rounded-full bg-border-light/50">
-                <div
-                  className={`h-2 rounded-full ${toneProgressClass(statusData.tone)}`}
-                  style={{ width: `${statusData.percent}%` }}
-                />
-              </div>
-              <p className="text-right text-[11px] text-subtext-light">
-                {formatNumber(statusData.used)} / {formatNumber(statusData.cycleValue)} km
-              </p>
-            </div>
-          ) : null}
-        </button>
-        {confirmOpen ? (
-          <div
-            className="absolute right-3 top-12 z-10 w-40 rounded-xl border border-border-light bg-white px-3 py-2 text-xs shadow-lg"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <p className="font-semibold text-text-light">삭제하시겠습니까?</p>
-            <div className="mt-2 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setConfirmOpen(false)}
-                className="rounded-full px-2 py-1 text-[11px] font-semibold text-subtext-light hover:text-text-light"
-              >
-                아니오
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setConfirmOpen(false);
-                  onDelete?.(item.key, item.id);
-                }}
-                className="rounded-full bg-red-500 px-2 py-1 text-[11px] font-semibold text-white hover:bg-red-600"
-              >
-                예
-              </button>
-            </div>
-          </div>
-        ) : null}
-      </div>
-    );
-  }
+  const flash = state.flash;
 
-function DetailModal({ open, item, onClose, onChange, onSaveHistory, onSaveConfig, onOpenHistory }) {
-  if (!open || !item) return null;
-  const flash = item.flash;
+  const handleConfigSave = () => onSaveConfig?.(item.key);
+  const handleHistorySave = () => onSaveHistory?.(item.key);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-4">
-      <div className="w-full max-w-lg rounded-3xl bg-white p-4 shadow-2xl max-h-[92vh] overflow-y-auto sm:p-6 sm:max-h-[85vh]">
-        <div className="flex items-center justify-between">
-          <h3 className="text-base font-bold text-text-light sm:text-lg">필터 상세 정보</h3>
-          <button onClick={onClose} className="text-subtext-light transition hover:text-text-light">
-            <span className="material-symbols-outlined text-xl sm:text-2xl">close</span>
-          </button>
-        </div>
-
-        <div className="mt-3 space-y-3 sm:mt-4 sm:space-y-4">
-          <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
-            <label className="flex flex-col gap-2 text-sm">
-              <span className="text-xs font-semibold text-subtext-light">항목 이름</span>
+    <article className="rounded-2xl border border-border-light bg-surface-light p-5 shadow-card space-y-5">
+      <header className="space-y-3">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-start justify-between gap-3">
+            {state.editingName ? (
               <input
-                value={item.kind}
+                className="flex-1 rounded-xl border border-primary/40 bg-background-light px-3 py-2 text-lg font-semibold focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                value={state.kind}
                 onChange={(e) => onChange(item.key, "kind", e.target.value)}
-                className="h-10 w-full rounded-xl border border-border-light bg-background-light px-3 text-sm text-text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 sm:h-11"
+                onBlur={() => onChange(item.key, "editingName", false)}
+                autoFocus
               />
-            </label>
-              <div className="col-span-2 flex items-end gap-2">
-                <label className="flex w-1/3 flex-col gap-2 text-sm">
-                  <span className="text-xs font-semibold text-subtext-light">관리 방식</span>
+            ) : (
+              <div className="flex min-w-0 items-center gap-2">
+                <h3 className="text-lg font-semibold text-text-light">{state.kind}</h3>
+                <button
+                  type="button"
+                  aria-label="이름 수정"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border-light bg-white text-text-light transition hover:border-primary hover:text-primary"
+                  onClick={() => onChange(item.key, "editingName", true)}
+                >
+                  <span className="material-symbols-outlined text-base">edit</span>
+                </button>
+              </div>
+            )}
+            {confirmDelete ? (
+              <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-text-light">
+                <span className="font-semibold text-red-600 whitespace-nowrap">정말 삭제할까요?</span>
+                <button
+                  type="button"
+                  className="inline-flex flex-shrink-0 items-center gap-1 text-xs font-semibold text-red-600 transition hover:text-red-500"
+                  onClick={() => onDelete(item.key, state.id)}
+                >
+                  <span className="material-symbols-outlined text-base">delete</span>
+                  <span>삭제</span>
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex flex-shrink-0 items-center gap-1 text-xs font-semibold text-subtext-light transition hover:text-primary"
+                  onClick={() => setConfirmDelete(false)}
+                >
+                  <span className="material-symbols-outlined text-base">close</span>
+                  <span>취소</span>
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="inline-flex flex-shrink-0 items-center gap-1 text-xs font-semibold text-red-600 transition hover:text-red-500"
+                onClick={() => setConfirmDelete(true)}
+              >
+                <span className="material-symbols-outlined text-base">delete</span>
+                <span>삭제</span>
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-subtext-light">
+            <span className="rounded-full bg-primary/10 px-3 py-1 font-semibold text-primary">
+              {lastHistoryValue || "저장된 이력이 없습니다."}
+            </span>
+            <button
+              type="button"
+              aria-label={isCollapsed ? "펼치기" : "접기"}
+              aria-expanded={!isCollapsed}
+              onClick={() => onToggle?.(item.key)}
+              className="ml-auto flex h-7 w-7 items-center justify-center rounded-full border border-border-light bg-background-light text-subtext-light transition hover:text-primary"
+            >
+              <span className="material-symbols-outlined text-base">{isCollapsed ? "expand_more" : "expand_less"}</span>
+            </button>
+          </div>
+          <div className="text-sm font-semibold text-primary">
+            {statusNode || "교체 정보를 입력해주세요."}
+          </div>
+        </div>
+      </header>
+
+      {!isCollapsed && (
+        <>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-3">
+              <div className="flex flex-col gap-2 text-sm">
+                <span className="text-xs font-semibold text-subtext-light">관리 방식</span>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                   <select
-                    value={item.mode}
+                    value={state.mode}
                     onChange={(e) => onChange(item.key, "mode", e.target.value)}
-                    className="h-10 w-full rounded-xl border border-border-light bg-background-light px-3 text-sm text-text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 sm:h-11"
+                    className="h-11 rounded-xl border border-border-light bg-background-light px-3 text-sm text-text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
                   >
                     <option value="distance">주행거리 기준</option>
                     <option value="time">기간 기준</option>
                   </select>
-                </label>
-                <label className="flex w-1/3 flex-col gap-2 text-sm">
-                  <span className="text-xs font-semibold text-subtext-light">교체 주기</span>
-                  <div className="relative">
+                  <input
+                    type="number"
+                    placeholder={state.mode === "distance" ? "주기 (km)" : "주기 (개월)"}
+                    value={state.mode === "distance" ? state.cycleKm || "" : state.cycleMonths || ""}
+                    onChange={(e) =>
+                      onChange(item.key, state.mode === "distance" ? "cycleKm" : "cycleMonths", e.target.value)
+                    }
+                    className="h-11 w-full rounded-xl border border-border-light bg-background-light px-3 text-sm text-text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 sm:w-32"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="space-y-4 md:border-l md:border-border-light md:pl-6">
+              <div className="space-y-2">
+                <span className="text-xs font-semibold text-subtext-light">최근 교체 정보</span>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="flex flex-col gap-2 text-sm">
+                    <span className="text-xs font-medium text-subtext-light">마지막 교체 주행거리</span>
                     <input
                       type="number"
-                      placeholder="주기"
-                      value={item.mode === "distance" ? item.cycleKm || "" : item.cycleMonths || ""}
-                      onChange={(e) =>
-                        onChange(item.key, item.mode === "distance" ? "cycleKm" : "cycleMonths", e.target.value)
-                      }
-                      className="h-10 w-full rounded-xl border border-border-light bg-background-light px-3 pr-9 text-right text-sm text-text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 sm:h-11"
+                      placeholder="예: 125000"
+                      value={state.lastOdo || ""}
+                      onChange={(e) => onChange(item.key, "lastOdo", e.target.value)}
+                      className="h-11 rounded-xl border border-border-light bg-background-light px-3 text-sm text-text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
                     />
-                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-subtext-light">
-                      {item.mode === "distance" ? "km" : "개월"}
-                    </span>
-                  </div>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => onSaveConfig?.(item.key)}
-                className="inline-flex h-10 w-[28%] items-center justify-center rounded-full border border-border-light bg-primary/10 px-2 text-xs font-semibold text-primary transition hover:bg-primary/20 sm:h-11"
-              >
-                관리 방식 저장
-              </button>
+                  </label>
+                  <label className="flex flex-col gap-2 text-sm">
+                    <span className="text-xs font-medium text-subtext-light">마지막 교체일</span>
+                    <input
+                      type="date"
+                      value={state.lastDate || ""}
+                      onChange={(e) => onChange(item.key, "lastDate", e.target.value)}
+                      className="h-11 rounded-xl border border-border-light bg-background-light px-3 text-sm text-text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </label>
+                </div>
               </div>
-            <label className="flex flex-col gap-2 text-sm">
-              <span className="text-xs font-semibold text-subtext-light">마지막 교체 주행거리</span>
-              <input
-                type="number"
-                placeholder="예: 125000"
-                value={item.lastOdo || ""}
-                onChange={(e) => onChange(item.key, "lastOdo", e.target.value)}
-                className="h-10 w-full rounded-xl border border-border-light bg-background-light px-3 text-sm text-text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 sm:h-11"
-              />
-            </label>
-            <label className="flex flex-col gap-2 text-sm">
-              <span className="text-xs font-semibold text-subtext-light">마지막 교체일</span>
-              <input
-                type="date"
-                value={item.lastDate || ""}
-                onChange={(e) => onChange(item.key, "lastDate", e.target.value)}
-                className="h-10 w-full rounded-xl border border-border-light bg-background-light px-3 text-sm text-text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 sm:h-11"
-              />
-            </label>
-            <label className="flex flex-col gap-2 text-sm">
-              <span className="text-xs font-semibold text-subtext-light">비용 (원)</span>
-              <input
-                type="number"
-                placeholder="예: 45000"
-                value={item.cost || ""}
-                onChange={(e) => onChange(item.key, "cost", e.target.value)}
-                className="h-10 w-full rounded-xl border border-border-light bg-background-light px-3 text-sm text-text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 sm:h-11"
-              />
-            </label>
-            <label className="flex flex-col gap-2 text-sm">
-              <span className="text-xs font-semibold text-subtext-light">메모</span>
-              <input
-                type="text"
-                placeholder="필요하면 메모를 남겨주세요"
-                value={item.memo || ""}
-                onChange={(e) => onChange(item.key, "memo", e.target.value)}
-                className="h-10 w-full rounded-xl border border-border-light bg-background-light px-3 text-sm text-text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 sm:h-11"
-              />
-            </label>
+              <div className="grid gap-3 sm:grid-cols-2 sm:justify-items-end">
+                <label className="flex w-full flex-col gap-2 text-sm sm:max-w-[150px] sm:text-right">
+                  <span className="text-xs font-semibold text-subtext-light">비용 (원)</span>
+                  <input
+                    type="number"
+                    placeholder="예: 45000"
+                    value={state.cost || ""}
+                    onChange={(e) => onChange(item.key, "cost", e.target.value)}
+                    className="h-11 rounded-xl border border-border-light bg-background-light px-3 text-sm text-text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 text-right"
+                  />
+                </label>
+                <label className="flex w-full flex-col gap-2 text-sm sm:max-w-[200px] sm:text-right">
+                  <span className="text-xs font-semibold text-subtext-light">메모</span>
+                  <input
+                    type="text"
+                    placeholder="필요하면 메모를 남겨주세요"
+                    value={state.memo || ""}
+                    onChange={(e) => onChange(item.key, "memo", e.target.value)}
+                    className="h-11 rounded-xl border border-border-light bg-background-light px-3 text-sm text-text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </label>
+              </div>
+            </div>
           </div>
 
-
-            <div className="flex flex-wrap justify-end gap-2 pt-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
             <button
               type="button"
-              onClick={() => onOpenHistory?.(item.key)}
-              className="flex items-center gap-2 rounded-full bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-600"
+              onClick={handleConfigSave}
+              className="flex items-center gap-2 rounded-full border border-border-light px-4 py-2 text-sm font-semibold text-subtext-light transition hover:border-primary hover:text-primary"
             >
-              <span className="material-symbols-outlined text-base">history</span>
-              이력 보기
+              <span className="material-symbols-outlined text-base">tune</span>
+              관리 방식 저장
             </button>
-            <button
-              type="button"
-              onClick={() => onSaveHistory?.(item.key)}
-              className="flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary/90"
-            >
-              <span className="material-symbols-outlined text-base">save</span>
-              이력 기록
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => onOpenHistory(item.key)}
+                className="flex items-center gap-2 rounded-full bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-600"
+              >
+                <span className="material-symbols-outlined text-base">history</span>
+                이력 보기
+              </button>
+              <button
+                type="button"
+                onClick={handleHistorySave}
+                className="flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary/90"
+              >
+                <span className="material-symbols-outlined text-base">save</span>
+                이력 기록
+              </button>
+            </div>
           </div>
+        </>
+      )}
 
-          {(flash === "history-saved" || flash === "saved") && (
-            <div className="text-sm font-semibold text-emerald-600">이력 기록이 저장되었습니다.</div>
-          )}
-          {flash === "config-saved" && (
-            <div className="text-sm font-semibold text-emerald-600">관리 방식이 저장되었습니다.</div>
-          )}
-          {flash && flash.startsWith("err:") && (
-            <div className="text-sm font-semibold text-red-600">{flash.replace("err:", "")}</div>
-          )}
-        </div>
-      </div>
-    </div>
+      {(flash === "history-saved" || flash === "saved") && (
+        <div className="text-sm font-semibold text-emerald-600">이력 기록이 저장되었습니다.</div>
+      )}
+      {flash === "config-saved" && (
+        <div className="text-sm font-semibold text-emerald-600">관리 방식이 저장되었습니다.</div>
+      )}
+      {flash && flash.startsWith("err:") && (
+        <div className="text-sm font-semibold text-red-600">{flash.replace("err:", "")}</div>
+      )}
+    </article>
   );
 }
 
@@ -464,7 +385,6 @@ function HistoryModal({ open, onClose, title, rows, onDeleteSelected, onUpdateRo
 }
 
 export default function FilterPanel({ currentMileage, vehicleId, apiClient, onBack, hideLocalBack, userId }) {
-  const location = useLocation();
   const [items, setItems] = useState(() =>
     BASE_ITEMS.map((it) => ({
       key: it.key,
@@ -479,6 +399,7 @@ export default function FilterPanel({ currentMileage, vehicleId, apiClient, onBa
       memo: "",
       history: [],
       flash: null,
+      collapsed: true,
     }))
   );
 
@@ -489,20 +410,7 @@ export default function FilterPanel({ currentMileage, vehicleId, apiClient, onBa
     scope: "single",
     itemKey: null,
   });
-  const [detailModal, setDetailModal] = useState({ open: false, itemKey: null });
-  const activeItem = useMemo(() => items.find((it) => it.key === detailModal.itemKey), [items, detailModal.itemKey]);
   const [alertsEnabled, setAlertsEnabled] = useState(false);
-
-  useEffect(() => {
-    if (location.pathname !== "/filter") return;
-    setItems((prev) =>
-      prev.map((row) =>
-        row.lastOdo || row.lastDate || row.cost || row.memo
-          ? { ...row, lastOdo: "", lastDate: "", cost: "", memo: "" }
-          : row
-      )
-    );
-  }, [location.pathname]);
 
   const [allSort, setAllSort] = useState("date"); // date | odo | id
   
@@ -562,15 +470,16 @@ export default function FilterPanel({ currentMileage, vehicleId, apiClient, onBa
             key: r.kind || r.label,
             kind: r.kind || r.label,
             mode: r.mode || "distance",
-            lastOdo: "",
-            lastDate: "",
+            lastOdo: r.lastOdo ?? "",
+            lastDate: r.lastDate ?? "",
             cycleKm: r.cycleKm ?? "",
             cycleMonths: r.cycleMonths ?? "",
-            cost: "",
-            memo: "",
+            cost: r.cost ?? "",
+            memo: r.memo ?? "",
             history: [],
             flash: null,
-              }))
+          collapsed: true,
+          }))
         );
       } catch (e) {
         console.error("항목 불러오기 실패:", e);
@@ -581,6 +490,10 @@ export default function FilterPanel({ currentMileage, vehicleId, apiClient, onBa
 
   const change = (key, field, value) => {
     setItems((prev) => prev.map((it) => (it.key === key ? { ...it, [field]: value } : it)));
+  };
+
+  const toggleCollapsed = (key) => {
+    setItems((prev) => prev.map((it) => (it.key === key ? { ...it, collapsed: !it.collapsed } : it)));
   };
 
   const removeItem = async (key, id) => {
@@ -638,11 +551,7 @@ export default function FilterPanel({ currentMileage, vehicleId, apiClient, onBa
     try {
       await request("post", `${apiPrefix}/consumables/add`, payload);
       setItems((prev) =>
-        prev.map((row) =>
-          row.key === key
-            ? { ...row, flash: "history-saved", lastOdo: "", lastDate: "", cost: "", memo: "" }
-            : row
-        )
+        prev.map((row) => (row.key === key ? { ...row, flash: "history-saved" } : row))
       );
       setMaxOdoByKind((prev) => ({
         ...prev,
@@ -655,9 +564,6 @@ export default function FilterPanel({ currentMileage, vehicleId, apiClient, onBa
       setTimeout(() => {
         setItems((prev) => prev.map((row) => (row.key === key ? { ...row, flash: null } : row)));
       }, 1600);
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("consumables:changed"));
-      }
     } catch (e) {
       const msg = e?.message ? String(e.message) : "저장 실패";
       setItems((prev) =>
@@ -696,9 +602,6 @@ export default function FilterPanel({ currentMileage, vehicleId, apiClient, onBa
       setTimeout(() => {
         setItems((prev) => prev.map((row) => (row.key === key ? { ...row, flash: null } : row)));
       }, 1600);
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("consumables:changed"));
-      }
     } catch (e) {
       const msg = e?.message ? String(e.message) : "설정 저장에 실패했습니다.";
       setItems((prev) =>
@@ -756,13 +659,7 @@ export default function FilterPanel({ currentMileage, vehicleId, apiClient, onBa
       setMaxOdoByKind({});
       setMaxDateByKind({});
       if (shouldReset) {
-        setItems((prev) =>
-          prev.map((row) =>
-            row.lastOdo || row.lastDate || row.cost || row.memo
-              ? { ...row, lastOdo: "", lastDate: "", cost: "", memo: "" }
-              : row
-          )
-        );
+        setItems((prev) => prev.map((row) => (row.lastOdo || row.lastDate ? { ...row, lastOdo: "", lastDate: "" } : row)));
       }
       return;
     }
@@ -806,8 +703,8 @@ export default function FilterPanel({ currentMileage, vehicleId, apiClient, onBa
           prev.map((row) =>
             kindsWithHistory.has(row.kind)
               ? row
-              : row.lastOdo || row.lastDate || row.cost || row.memo
-              ? { ...row, lastOdo: "", lastDate: "", cost: "", memo: "" }
+              : row.lastOdo || row.lastDate
+              ? { ...row, lastOdo: "", lastDate: "" }
               : row,
           ),
         );
@@ -844,12 +741,6 @@ export default function FilterPanel({ currentMileage, vehicleId, apiClient, onBa
 
   const deleteHistory = async (ids) => {
     if (!ids || ids.length === 0) return;
-    const affectedKinds = new Set(
-      historyModal.rows
-        .filter((row) => ids.includes(row.id))
-        .map((row) => row.kind || row.label)
-        .filter(Boolean)
-    );
     await request("post", `${apiPrefix}/consumables/bulk-delete`, { ids });
     if (historyModal.scope === "single" && historyModal.itemKey) {
       const rows = await fetchItemHistory(historyModal.itemKey);
@@ -859,18 +750,6 @@ export default function FilterPanel({ currentMileage, vehicleId, apiClient, onBa
       setHistoryModal((p) => ({ ...p, rows }));
     }
     await recomputeUsageStats({ resetInputs: true });
-    if (affectedKinds.size > 0) {
-      setItems((prev) =>
-        prev.map((row) =>
-          affectedKinds.has(row.kind)
-            ? { ...row, lastOdo: "", lastDate: "", cost: "", memo: "" }
-            : row
-        )
-      );
-    }
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("consumables:changed"));
-    }
   };
 
   const updateRow = async (row) => {
@@ -905,7 +784,7 @@ export default function FilterPanel({ currentMileage, vehicleId, apiClient, onBa
         memo: "",
       };
       const created = await request("post", `${apiPrefix}/consumables/items`, body);
-      setItems((prev) => [...prev, { ...created, key: created.kind, editingName: true, history: [], flash: null }]);
+      setItems((prev) => [...prev, { ...created, key: created.kind, editingName: true, history: [], flash: null, collapsed: false }]);
     } catch (e) {
       console.error("항목 추가 실패:", e);
       alert("항목 추가에 실패했습니다.");
@@ -947,16 +826,19 @@ export default function FilterPanel({ currentMileage, vehicleId, apiClient, onBa
               item={it}
               state={it}
               currentMileage={currentMileage}
-              onOpenDetail={(key) => setDetailModal({ open: true, itemKey: key })}
+              onChange={change}
+              onSaveHistory={saveHistory}
+              onSaveConfig={saveConfig}
+              onOpenHistory={openHistory}
               onDelete={() => removeItem(it.key, it.id)}
               alertsEnabled={alertsEnabled}
               dueMessage="🚨 필터 교체 시기가 도래했습니다!"
+              onToggle={toggleCollapsed}
               lastHistoryValue={
                 it.mode === "distance"
                   ? (maxOdoByKind[it.kind] != null ? `${maxOdoByKind[it.kind]} km` : null)
                   : maxDateByKind[it.kind] || null
               }
-              lastHistoryDate={maxDateByKind[it.kind] || null}
             />
           ))}
         </div>
@@ -985,12 +867,12 @@ export default function FilterPanel({ currentMileage, vehicleId, apiClient, onBa
                       key: r.kind,
                       kind: r.kind,
                       mode: r.mode || "distance",
-                      lastOdo: "",
-                      lastDate: "",
+                      lastOdo: r.lastOdo ?? "",
+                      lastDate: r.lastDate ?? "",
                       cycleKm: r.cycleKm ?? "",
                       cycleMonths: r.cycleMonths ?? "",
-                      cost: "",
-                      memo: "",
+                      cost: r.cost ?? "",
+                      memo: r.memo ?? "",
                       history: [],
                       flash: null,
                     }))
@@ -1017,19 +899,6 @@ export default function FilterPanel({ currentMileage, vehicleId, apiClient, onBa
         </div>
       </div>
       
-      <DetailModal
-        open={detailModal.open}
-        item={activeItem}
-        onClose={() => setDetailModal({ open: false, itemKey: null })}
-        onChange={change}
-        onSaveHistory={saveHistory}
-        onSaveConfig={saveConfig}
-        onOpenHistory={(key) => {
-          setDetailModal({ open: false, itemKey: null });
-          openHistory(key);
-        }}
-      />
-
       <HistoryModal
         open={historyModal.open}
         onClose={() => setHistoryModal((p) => ({ ...p, open: false }))}
@@ -1044,3 +913,8 @@ export default function FilterPanel({ currentMileage, vehicleId, apiClient, onBa
     </div>
   );
 }
+
+
+
+
+

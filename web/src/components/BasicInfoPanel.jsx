@@ -61,22 +61,9 @@ const baseIconMap = {
 
 const scheduleIconMap = {
   "보험 만기일": "event_available",
-  "정기검사 일자": "fact_check",
   "다음 정기검사": "event_repeat",
   "보험사": "apartment",
-  "보험 증권 번호": "confirmation_number",
   "보험료": "savings",
-  "검사 기관": "engineering",
-  "검사 결과": "task_alt",
-};
-
-const registrationIconMap = {
-  "등록 번호": "badge",
-  "등록 관청": "domain",
-  "등록 일자": "calendar_today",
-  "등록 종류": "category",
-  "자동차세 연도": "date_range",
-  "자동차세 금액": "payments",
   "차량세 납부 기한": "schedule",
   "납부 여부": "check_circle",
 };
@@ -142,12 +129,10 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
   };
 
   const insuranceExpiry = legalInfo?.insurance_expiry ?? vehicle?.insurance_exp;
-  const inspectionDate = legalInfo?.inspection_date ?? vehicle?.insp_exp;
   const nextInspectionDate = legalInfo?.next_inspection_date;
 
   const baseInfoItems = useMemo(() => {
     if (!vehicle) return [];
-    const duplicatedLabels = new Set(["차량 번호", "제조사", "차량 모델", "연식", "현재 주행거리"]);
     const items = [
       { label: "차량 번호", value: vehicle.plate_no || "-" },
       { label: "제조사", value: vehicle.maker || "-" },
@@ -155,18 +140,11 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
       { label: "연식", value: vehicle.year || "-" },
       { label: "현재 주행거리", value: `${formatNumber(vehicle.odo_km)} km` },
       { label: "차량 종류", value: vehicle.makerType || "-" },
-      {
-        label: "배기량",
-        value: vehicle.displacement_cc ? `${formatNumber(vehicle.displacement_cc)} cc` : "-",
-      },
-      { label: "소유자", value: vehicle.owner_name || "-" },
     ];
-    return items
-      .filter((item) => !duplicatedLabels.has(item.label))
-      .map((item) => ({
-        ...item,
-        icon: baseIconMap[item.label] || "info",
-      }));
+    return items.map((item) => ({
+      ...item,
+      icon: baseIconMap[item.label] || "info",
+    }));
   }, [vehicle]);
 
   const insuranceItems = useMemo(() => {
@@ -179,10 +157,6 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
       {
         label: "보험사",
         value: legalInfo?.insurance_company || "-",
-      },
-      {
-        label: "보험 증권 번호",
-        value: legalInfo?.insurance_number || "-",
       },
       {
         label: "보험료",
@@ -198,41 +172,19 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
   const inspectionItems = useMemo(() => {
     const items = [
       {
-        label: "정기검사 일자",
-        value: formatDate(inspectionDate),
-        badge: getExpiryStatus(inspectionDate),
-      },
-      {
         label: "다음 정기검사",
         value: formatDate(nextInspectionDate),
         badge: getExpiryStatus(nextInspectionDate),
-      },
-      {
-        label: "검사 기관",
-        value: legalInfo?.inspection_center || "-",
-      },
-      {
-        label: "검사 결과",
-        value: legalInfo?.inspection_result || "-",
       },
     ];
     return items.map((item) => ({
       ...item,
       icon: scheduleIconMap[item.label] || "info",
     }));
-  }, [inspectionDate, nextInspectionDate, legalInfo]);
+  }, [nextInspectionDate, legalInfo]);
 
-  const registrationItems = useMemo(() => {
+  const taxItems = useMemo(() => {
     const items = [
-      { label: "등록 번호", value: legalInfo?.registration_number || "-" },
-      { label: "등록 관청", value: legalInfo?.registration_office || "-" },
-      { label: "등록 일자", value: formatDate(legalInfo?.registration_date) },
-      { label: "등록 종류", value: legalInfo?.registration_type || "-" },
-      { label: "자동차세 연도", value: legalInfo?.tax_year || "-" },
-      {
-        label: "자동차세 금액",
-        value: legalInfo?.tax_amount != null ? `${formatNumber(legalInfo.tax_amount)} 원` : "-",
-      },
       {
         label: "차량세 납부 기한",
         value: formatDate(legalInfo?.tax_due_date),
@@ -248,13 +200,13 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
     ];
     return items.map((item) => ({
       ...item,
-      icon: registrationIconMap[item.label] || "info",
+      icon: scheduleIconMap[item.label] || "info",
     }));
   }, [legalInfo]);
 
   const inspectionDetailItems = useMemo(
-    () => [...inspectionItems, ...registrationItems],
-    [inspectionItems, registrationItems],
+    () => [...inspectionItems, ...taxItems],
+    [inspectionItems, taxItems],
   );
 
   const mainSummary = useMemo(() => {
@@ -266,16 +218,13 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
       { icon: "calendar_month", label: "연식", value: vehicle.year || "-" },
       { icon: "speed", label: "현재 주행거리", value: `${formatNumber(vehicle.odo_km)} km` },
       { icon: "event_available", label: "보험 만기", value: formatDate(insuranceExpiry) },
-      { icon: "event_repeat", label: "다음 검사 예정", value: formatDate(nextInspectionDate) },
     ];
     return {
       title,
       subtitle,
-      owner: vehicle.owner_name || "-",
-      vehicleType: vehicle.makerType || "-",
       chips,
     };
-  }, [vehicle, insuranceExpiry, nextInspectionDate]);
+  }, [vehicle, insuranceExpiry]);
 
   if (!vehicle) {
     return (
@@ -330,16 +279,6 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
                 </div>
               </div>
             </div>
-          </div>
-          <div className="flex flex-wrap gap-2 text-xs text-subtext-light">
-            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 font-semibold text-primary">
-              <span className="material-symbols-outlined text-base">person</span>
-              <span>소유자 {mainSummary.owner}</span>
-            </span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-border-light/60 px-3 py-1 font-semibold text-text-light">
-              <span className="material-symbols-outlined text-base">category</span>
-              <span>{mainSummary.vehicleType}</span>
-            </span>
           </div>
         </div>
 
@@ -418,7 +357,7 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-base text-primary">fact_check</span>
-                <h3 className="text-sm font-semibold text-text-light">점검 · 등록 · 세금</h3>
+                <h3 className="text-sm font-semibold text-text-light">점검 · 세금</h3>
               </div>
               <button
                 type="button"

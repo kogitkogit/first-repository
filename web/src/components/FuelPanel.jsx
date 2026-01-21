@@ -146,26 +146,6 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
   // --- Render ---
   return (
     <div className="pb-28">
-      {/* 1. Header Section (MaintenancePanel 스타일 적용) */}
-      <div className="px-4 pt-4">
-        <section className="rounded-3xl border border-border-light bg-surface-light p-6 shadow-card">
-          <div className="space-y-2">
-            <h1 className="text-2xl font-bold text-text-light">주유 이력을 한눈에 확인하세요</h1>
-            <p className="text-sm text-subtext-light">주유 기록을 추가하고 지표를 확인하세요.</p>
-          </div>
-          <div className="mt-4">
-            <button
-              className="flex w-full items-center justify-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-primary/90 md:w-auto"
-              onClick={() => { setFormValues(defaultForm(vehicle)); setFormModal({ open: true, mode: "create" }); }}
-            >
-              <span className="material-symbols-outlined text-base">add</span>
-              주유 기록 추가
-            </button>
-          </div>
-        </section>
-      </div>
-
-      {/* 2. Tabs */}
       <PanelTabs
         tabs={[
           { key: "summary", label: "요약보기", icon: "insights" },
@@ -174,49 +154,81 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
         activeKey={activeTab}
         onChange={setActiveTab}
       />
+      <div className="px-4 pt-0 pb-3">
+        <div className="flex justify-end">
+          <button
+            className="flex items-center justify-center gap-2 rounded-full bg-primary px-4 py-1.5 text-sm font-semibold text-white shadow-card transition hover:bg-primary/90"
+            onClick={() => {
+              setFormValues(defaultForm(vehicle));
+              setFormModal({ open: true, mode: "create" });
+            }}
+          >
+            <span className="material-symbols-outlined text-base">add</span>
+            주유 기록 추가
+          </button>
+        </div>
+      </div>
 
       {/* 3. Content Body (여백 최적화) */}
       <div className="space-y-6 px-4">
         {isSummaryTab ? (
-          <div className="space-y-2">
-            {/* 조회 기간 선택 (탭 바로 아래 배치) */}
-            <div className="flex justify-end pt-1">
-              <label className="flex items-center gap-2 text-sm text-subtext-light bg-white px-3 py-1.5 rounded-full border border-border-light shadow-sm">
-                <span className="font-semibold text-text-light">조회 기간</span>
-                <select
-                  value={summaryRange}
-                  onChange={(e) => setSummaryRange(e.target.value)}
-                  className="bg-transparent text-sm text-text-light focus:outline-none"
-                >
-                  {SUMMARY_RANGE_OPTIONS.map((opt) => (
-                    <option key={opt.key} value={opt.key}>{opt.label}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
+          <div className="space-y-4">
+            <section className="rounded-2xl border border-border-light bg-surface-light p-5 shadow-card">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-sky-100 text-sky-700">
+                    <span className="material-symbols-outlined text-xl">local_gas_station</span>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-subtext-light">주유 요약</p>
+                    <h1 className="mt-1 text-xl font-bold text-text-light">{vehicle?.maker} {vehicle?.model}</h1>
+                    <p className="text-sm text-subtext-light">선택한 기간 기준으로 주유 지표를 확인하세요.</p>
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 text-sm text-subtext-light bg-white px-3 py-1.5 rounded-full border border-border-light shadow-sm">
+                  <span className="font-semibold text-text-light">조회 기간</span>
+                  <select
+                    value={summaryRange}
+                    onChange={(e) => setSummaryRange(e.target.value)}
+                    className="bg-transparent text-sm text-text-light focus:outline-none"
+                  >
+                    {SUMMARY_RANGE_OPTIONS.map((opt) => (
+                      <option key={opt.key} value={opt.key}>{opt.label}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </section>
 
-            {/* 통계 카드 */}
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
+            <section className="grid grid-cols-2 gap-3">
               <SummaryCard 
                 title={`${getSummaryRangeLabel(summaryRange)} 총 주유비`} 
-                value={`${summaryStats.totalCost.toLocaleString()} 원`} 
+                value={`${summaryStats.totalCost.toLocaleString()} 원`}
+                icon="payments"
+                color="bg-amber-100 text-amber-700"
               />
               <SummaryCard 
                 title="주유 건수" 
                 value={`${summaryStats.count}건`} 
-                caption="선택한 기간 기준" 
+                caption="선택한 기간 기준"
+                icon="receipt_long"
+                color="bg-sky-100 text-sky-700"
               />
               <SummaryCard 
                 title="마지막 주유일" 
                 value={summaryStats.lastRecord?.date || "-"} 
-                caption={summaryStats.lastRecord ? `${summaryStats.lastRecord.liters}L 충전` : "기록 없음"} 
+                caption={summaryStats.lastRecord ? `${summaryStats.lastRecord.liters}L 충전` : "기록 없음"}
+                icon="event"
+                color="bg-emerald-100 text-emerald-700"
               />
               <SummaryCard 
                 title="평균 주유비" 
                 value={`${summaryStats.avgCost.toLocaleString()} 원`} 
-                caption={summaryStats.count ? `${summaryStats.count}건 기준` : "기록 없음"} 
+                caption={summaryStats.count ? `${summaryStats.count}건 기준` : "기록 없음"}
+                icon="insights"
+                color="bg-indigo-100 text-indigo-700"
               />
-            </div>
+            </section>
           </div>
         ) : (
           <>
@@ -305,16 +317,18 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
 }
 
 // --- Sub-components ---
-function SummaryCard({ title, value, caption, icon = "insights" }) {
+function SummaryCard({ title, value, caption, icon = "insights", color = "bg-primary/10 text-primary" }) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-border-light bg-white p-4 shadow-sm">
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-        <span className="material-symbols-outlined text-lg">{icon}</span>
+    <div className="flex flex-col gap-3 rounded-2xl border border-border-light bg-white p-4 shadow-sm">
+      <div className="flex items-center gap-2">
+        <span className={`flex h-9 w-9 items-center justify-center rounded-full ${color}`}>
+          <span className="material-symbols-outlined text-lg">{icon}</span>
+        </span>
+        <span className="text-sm font-semibold text-text-light">{title}</span>
       </div>
       <div>
-        <p className="text-xs font-semibold text-subtext-light uppercase">{title}</p>
-        <p className="text-xl font-bold text-text-light">{value}</p>
-        {caption && <p className="text-[11px] text-subtext-light">{caption}</p>}
+        <p className="text-lg font-bold text-text-light">{value}</p>
+        {caption && <p className="text-xs text-subtext-light">{caption}</p>}
       </div>
     </div>
   );
@@ -361,8 +375,8 @@ function Modal({ title, onClose, children, actions }) {
 
 function BottomSheet({ children, onClose }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center">
-      <div className="w-full max-w-lg rounded-t-3xl sm:rounded-3xl bg-white p-6 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
         <div className="flex justify-end mb-2">
           <button onClick={onClose}><span className="material-symbols-outlined">close</span></button>
         </div>

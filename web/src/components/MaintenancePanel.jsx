@@ -210,77 +210,89 @@ export default function MaintenancePanel({ vehicle }) {
   // --- Render ---
   return (
     <div className="pb-28">
-    {/* 1. 상단 섹션: 드롭박스를 제거하고 정비 이력 추가 버튼만 유지 */}
-    <div className="px-4 pt-4">
-      <section className="rounded-3xl border border-border-light bg-surface-light p-6 shadow-card">
-        <div className="space-y-2">
-          <h1 className="text-2xl font-bold text-text-light">정비 이력을 한눈에 관리하세요</h1>
-          <p className="text-sm text-subtext-light">정비 내역을 추가하고 지표를 확인하세요.</p>
-        </div>
-        <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <PanelTabs
+        tabs={[
+          { key: "summary", label: "요약보기", icon: "insights" },
+          { key: "details", label: "상세보기", icon: "list_alt" },
+        ]}
+        activeKey={activeTab}
+        onChange={setActiveTab}
+      />
+      <div className="px-4 pt-0 pb-3">
+        <div className="flex justify-end">
           <button
-            className="flex w-full items-center justify-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary/90 md:w-auto"
-            onClick={() => { setFormValues(defaultForm(vehicle)); setFormModal({ open: true, mode: "create" }); }}
+            className="flex items-center justify-center gap-2 rounded-full bg-primary px-4 py-1.5 text-sm font-semibold text-white shadow-card transition hover:bg-primary/90"
+            onClick={() => {
+              setFormValues(defaultForm(vehicle));
+              setFormModal({ open: true, mode: "create" });
+            }}
           >
             <span className="material-symbols-outlined text-base">add</span>
             정비 이력 추가
           </button>
         </div>
-      </section>
-    </div>
-
-      {/* 2. 탭 메뉴 */}
-    <PanelTabs
-      tabs={[
-        { key: "summary", label: "요약보기", icon: "insights" },
-        { key: "details", label: "상세보기", icon: "list_alt" },
-      ]}
-      activeKey={activeTab}
-      onChange={setActiveTab}
-    />
-
-    {/* 3. 본문 영역 */}
-    <div className="space-y-6 px-4">
+      </div>
+  
+      {/* 3. 본문 영역 */}
+      <div className="space-y-6 px-4">
       {isSummaryTab ? (
         <div className="space-y-4">
-          {/* 요약보기 탭일 때만 탭 아래에 드롭박스 노출 */}
-          <div className="flex justify-end">
-            <label className="flex items-center gap-2 text-sm text-subtext-light bg-white px-3 py-1.5 rounded-full border border-border-light shadow-sm">
-              <span className="font-semibold text-text-light">조회 기간</span>
-              <select
-                value={summaryRange}
-                onChange={(e) => setSummaryRange(e.target.value)}
-                className="bg-transparent text-sm text-text-light focus:outline-none"
-              >
-                {SUMMARY_RANGE_OPTIONS.map((opt) => (
-                  <option key={opt.key} value={opt.key}>{opt.label}</option>
-                ))}
-              </select>
-            </label>
-          </div>
+          <section className="rounded-2xl border border-border-light bg-surface-light p-5 shadow-card">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                  <span className="material-symbols-outlined text-xl">build_circle</span>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-subtext-light">정비 요약</p>
+                  <h1 className="mt-1 text-xl font-bold text-text-light">{vehicle?.maker} {vehicle?.model}</h1>
+                  <p className="text-sm text-subtext-light">선택한 기간 기준으로 정비 지표를 확인하세요.</p>
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-subtext-light bg-white px-3 py-1.5 rounded-full border border-border-light shadow-sm">
+                <span className="font-semibold text-text-light">조회 기간</span>
+                <select
+                  value={summaryRange}
+                  onChange={(e) => setSummaryRange(e.target.value)}
+                  className="bg-transparent text-sm text-text-light focus:outline-none"
+                >
+                  {SUMMARY_RANGE_OPTIONS.map((opt) => (
+                    <option key={opt.key} value={opt.key}>{opt.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </section>
 
-          {/* 요약 통계 카드 레이아웃 */}
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
+          <section className="grid grid-cols-2 gap-3">
             <SummaryCard 
               title={`${getSummaryRangeLabel(summaryRange)} 총 비용`} 
-              value={`${summaryStats.totalCost.toLocaleString()} 원`} 
+              value={`${summaryStats.totalCost.toLocaleString()} 원`}
+              icon="payments"
+              color="bg-amber-100 text-amber-700"
             />
             <SummaryCard 
               title="정비 건수" 
               value={`${summaryStats.count}건`} 
-              caption="선택한 기간 기준" 
+              caption="선택한 기간 기준"
+              icon="receipt_long"
+              color="bg-sky-100 text-sky-700"
             />
             <SummaryCard 
               title="마지막 정비일" 
               value={summaryStats.lastRecord?.service_date || "-"} 
-              caption={summaryStats.lastRecord?.title || "기록 없음"} 
+              caption={summaryStats.lastRecord?.title || "기록 없음"}
+              icon="event"
+              color="bg-emerald-100 text-emerald-700"
             />
             <SummaryCard 
               title="평균 비용" 
               value={`${summaryStats.averageCost.toLocaleString()} 원`} 
-              caption={summaryStats.count ? `${summaryStats.count}건 기준` : "기록 없음"} 
+              caption={summaryStats.count ? `${summaryStats.count}건 기준` : "기록 없음"}
+              icon="insights"
+              color="bg-indigo-100 text-indigo-700"
             />
-          </div>
+          </section>
         </div>
       ) : (
         <>
@@ -371,16 +383,18 @@ export default function MaintenancePanel({ vehicle }) {
 }
 
 // --- Helper Components & Functions (Remain similar but cleaned) ---
-function SummaryCard({ title, value, caption, icon = "insights" }) {
+function SummaryCard({ title, value, caption, icon = "insights", color = "bg-primary/10 text-primary" }) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-border-light bg-white p-4 shadow-sm">
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-        <span className="material-symbols-outlined text-lg">{icon}</span>
+    <div className="flex flex-col gap-3 rounded-2xl border border-border-light bg-white p-4 shadow-sm">
+      <div className="flex items-center gap-2">
+        <span className={`flex h-9 w-9 items-center justify-center rounded-full ${color}`}>
+          <span className="material-symbols-outlined text-lg">{icon}</span>
+        </span>
+        <span className="text-sm font-semibold text-text-light">{title}</span>
       </div>
       <div>
-        <p className="text-xs font-semibold text-subtext-light uppercase">{title}</p>
-        <p className="text-xl font-bold text-text-light">{value}</p>
-        {caption && <p className="text-[11px] text-subtext-light">{caption}</p>}
+        <p className="text-lg font-bold text-text-light">{value}</p>
+        {caption && <p className="text-xs text-subtext-light">{caption}</p>}
       </div>
     </div>
   );
@@ -426,8 +440,8 @@ function Modal({ title, onClose, children, actions }) {
 
 function BottomSheet({ children, onClose }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center">
-      <div className="w-full max-w-lg rounded-t-3xl sm:rounded-3xl bg-white p-6 shadow-2xl overflow-y-auto max-h-[80vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl overflow-y-auto max-h-[80vh]">
         <div className="flex justify-end mb-2">
           <button onClick={onClose}><span className="material-symbols-outlined">close</span></button>
         </div>

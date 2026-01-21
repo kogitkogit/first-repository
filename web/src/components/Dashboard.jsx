@@ -132,6 +132,13 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
     loadDueSummary();
   }, [vehicle, loadDueSummary]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = () => loadDueSummary();
+    window.addEventListener("consumables:changed", handler);
+    return () => window.removeEventListener("consumables:changed", handler);
+  }, [loadDueSummary]);
+
   const handleOdoSave = () => {
     if (!vehicle) return;
     if (!odoDate) {
@@ -570,7 +577,7 @@ function computeConsumableStatus({ item, currentMileage, latestOdo, latestDate }
   const mode = item.mode || "distance";
 
   if (mode === "distance") {
-    const baseOdo = toIntOrNull(item.lastOdo ?? latestOdo ?? item.last_odo_km ?? null);
+    const baseOdo = toIntOrNull(latestOdo ?? null);
     const cycleKm = toIntOrNull(item.cycleKm ?? item.cycle_km);
     if (currentMileage != null && baseOdo != null && cycleKm) {
       const used = Number(currentMileage) - baseOdo;
@@ -595,7 +602,7 @@ function computeConsumableStatus({ item, currentMileage, latestOdo, latestDate }
     return { tone: "muted", message: "최근 주행거리 데이터를 입력해주세요." };
   }
 
-  const baseDate = item.lastDate || item.last_date || latestDate || null;
+  const baseDate = latestDate || null;
   const months = monthsDiffFromNow(baseDate);
   const cycleMonths = toIntOrNull(item.cycleMonths ?? item.cycle_months);
   if (months != null && cycleMonths) {

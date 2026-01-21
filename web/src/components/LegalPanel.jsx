@@ -31,6 +31,14 @@ const SECTION_LABELS = {
   all: "전체 법적 정보" // 기본값 추가
 };
 
+const SECTION_FIELDS = {
+  insurance: ["insurance_company", "insurance_number", "insurance_expiry", "insurance_fee"],
+  tax: ["tax_year", "tax_amount", "tax_due_date", "tax_paid"],
+  inspection: ["inspection_center", "inspection_date", "next_inspection_date", "inspection_result"],
+  registration: ["registration_number", "registration_office", "registration_date", "registration_type"],
+  memo: ["memo"],
+};
+
 const TABS = [
   { key: "insurance", label: "보험", icon: "verified_user", description: "보험 증권과 만기 정보를 관리하세요." },
   { key: "tax", label: "자동차세", icon: "receipt_long", description: "자동차세 부과·납부 내역을 기록합니다." },
@@ -75,6 +83,7 @@ export default function LegalPanel({ vehicle }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [messageTone, setMessageTone] = useState("success");
+  const [lastSavedSection, setLastSavedSection] = useState(null);
   const [records, setRecords] = useState([]);
   const [activeRecordId, setActiveRecordId] = useState(null);
   const activeRecordIdRef = useRef(null);
@@ -115,6 +124,10 @@ export default function LegalPanel({ vehicle }) {
   }, [activeRecordId]);
 
   const sectionMeta = useMemo(() => TABS.find((item) => item.key === tab) ?? TABS[0], [tab]);
+  const activeRecord = useMemo(
+    () => records.find((record) => record.id === activeRecordId) ?? null,
+    [records, activeRecordId],
+  );
 
   const updateField = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -124,29 +137,34 @@ export default function LegalPanel({ vehicle }) {
     if (!vehicle) {
       setMessageTone("error");
       setMessage("차량을 먼저 선택해주세요.");
+      setLastSavedSection(sectionKey);
       setTimeout(() => setMessage(""), 2000);
       return;
     }
 
     try {
       setLoading(true);
-      const payload = {
-        ...form,
+      setLastSavedSection(sectionKey);
+      const basePayload = {
         user_id: vehicle.user_id ?? vehicle.userId ?? null,
         vehicle_id: vehicle.id,
         tax_paid: Boolean(form.tax_paid),
       };
-      
+      const selectedFields = SECTION_FIELDS[sectionKey] || null;
+      const payload = selectedFields
+        ? selectedFields.reduce((acc, key) => ({ ...acc, [key]: form[key] }), { ...basePayload })
+        : { ...basePayload, ...form };
+
       let response;
-      if (payload.id) {
-        response = await api.put(`/legal/update/${payload.id}`, payload);
+      if (form.id) {
+        response = await api.put(`/legal/update/${form.id}`, { ...payload, id: form.id });
       } else {
         response = await api.post(`/legal/add`, payload);
       }
-      
+
       const savedRecord = response?.data || response;
-      await loadRecords(savedRecord?.id ?? payload.id);
-      
+      await loadRecords(savedRecord?.id ?? form.id);
+
       const label = SECTION_LABELS[sectionKey] || "법적 정보";
       setMessageTone("success");
       setMessage(`${label} 정보가 저장되었습니다.`);
@@ -159,6 +177,50 @@ export default function LegalPanel({ vehicle }) {
     }
   };
 
+  const handleDeleteRecord = async (recordId) => {
+    if (!recordId) return;
+    const ok = window.confirm("이 기록을 삭제하시겠습니까?");
+    if (!ok) return;
+    try {
+      setLoading(true);
+      await api.delete(`/legal/delete/${recordId}`);
+      setMessageTone("success");
+      setMessage("저장된 기록이 삭제되었습니다.");
+      setLastSavedSection("records");
+      await loadRecords();
+    } catch (error) {
+      setMessageTone("error");
+      setMessage("삭제 중 오류가 발생했습니다.");
+      setLastSavedSection("records");
+    } finally {
+      setLoading(false);
+      setTimeout(() => setMessage(""), 2500);
+    }
+  };
+
+  const summaryCards = useMemo(() => {
+    const source = activeRecord ?? form;
+    const insuranceSubtitle = source.insurance_company || "보험사 미등록";
+    const insuranceDetail = source.insurance_expiry ? `만기 ${source.insurance_expiry}` : "만기일 미등록";
+    const taxSubtitle = source.tax_year ? `${source.tax_year}년 자동차세` : "과세 연도 미등록";
+    const taxDetail = source.tax_due_date ? `납부 기한 ${source.tax_due_date}` : "납부 기한 미등록";
+    const inspectionSubtitle = source.inspection_center || "검사소 미등록";
+    const inspectionDetail = source.next_inspection_date
+      ? `다음 검사 ${source.next_inspection_date}`
+      : source.inspection_date
+      ? `검사일 ${source.inspection_date}`
+      : "검사 일정 미등록";
+    const registrationSubtitle = source.registration_number || "등록 번호 미등록";
+    const registrationDetail = source.registration_date ? `등록일 ${source.registration_date}` : "등록일 미등록";
+
+    return [
+      { key: "insurance", label: "보험", icon: "verified_user", subtitle: insuranceSubtitle, detail: insuranceDetail, color: "bg-sky-100 text-sky-700" },
+      { key: "tax", label: "자동차세", icon: "receipt_long", subtitle: taxSubtitle, detail: taxDetail, color: "bg-amber-100 text-amber-700" },
+      { key: "inspection", label: "정기검사", icon: "assignment_turned_in", subtitle: inspectionSubtitle, detail: inspectionDetail, color: "bg-emerald-100 text-emerald-700" },
+      { key: "registration", label: "차량 등록", icon: "badge", subtitle: registrationSubtitle, detail: registrationDetail, color: "bg-indigo-100 text-indigo-700" },
+    ];
+  }, [activeRecord, form]);
+
   const renderInsurance = () => (
     <div className="grid gap-4 sm:grid-cols-2">
       <InputField label="보험사" value={form.insurance_company} onChange={(v) => updateField("insurance_company", v)} placeholder="예: 카케어손보" />
@@ -170,6 +232,9 @@ export default function LegalPanel({ vehicle }) {
           보험 정보 저장
         </button>
       </div>
+      {message && lastSavedSection === "insurance" && (
+        <p className={`sm:col-span-2 text-right text-xs ${messageTone === "success" ? "text-emerald-600" : "text-red-600"}`}>{message}</p>
+      )}
     </div>
   );
 
@@ -187,6 +252,9 @@ export default function LegalPanel({ vehicle }) {
           자동차세 정보 저장
         </button>
       </div>
+      {message && lastSavedSection === "tax" && (
+        <p className={`sm:col-span-2 text-right text-xs ${messageTone === "success" ? "text-emerald-600" : "text-red-600"}`}>{message}</p>
+      )}
     </div>
   );
 
@@ -201,6 +269,9 @@ export default function LegalPanel({ vehicle }) {
           검사 정보 저장
         </button>
       </div>
+      {message && lastSavedSection === "inspection" && (
+        <p className={`sm:col-span-2 text-right text-xs ${messageTone === "success" ? "text-emerald-600" : "text-red-600"}`}>{message}</p>
+      )}
     </div>
   );
 
@@ -215,6 +286,9 @@ export default function LegalPanel({ vehicle }) {
           등록 정보 저장
         </button>
       </div>
+      {message && lastSavedSection === "registration" && (
+        <p className={`sm:col-span-2 text-right text-xs ${messageTone === "success" ? "text-emerald-600" : "text-red-600"}`}>{message}</p>
+      )}
     </div>
   );
 
@@ -232,6 +306,9 @@ export default function LegalPanel({ vehicle }) {
           메모 저장
         </button>
       </div>
+      {message && lastSavedSection === "memo" && (
+        <p className={`text-right text-xs ${messageTone === "success" ? "text-emerald-600" : "text-red-600"}`}>{message}</p>
+      )}
     </div>
   );
 
@@ -247,7 +324,7 @@ export default function LegalPanel({ vehicle }) {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-background-light text-text-light 3pb-2">
+    <div className="flex min-h-screen flex-col bg-background-light text-text-light pb-2">
       <PanelTabs
         tabs={[
           { key: "summary", label: "요약보기", icon: "insights" },
@@ -258,24 +335,46 @@ export default function LegalPanel({ vehicle }) {
       />
       <div className="space-y-6 px-4 py-6">
         {isSummaryView ? (
-          <section className="rounded-2xl border border-border-light bg-surface-light p-5 shadow-card">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
-                  <span className="material-symbols-outlined text-xl">gavel</span>
+          <>
+            <section className="rounded-2xl border border-border-light bg-surface-light p-5 shadow-card">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                    <span className="material-symbols-outlined text-xl">gavel</span>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-subtext-light">차량 법적 정보</p>
+                    <h1 className="mt-1 text-xl font-bold text-text-light">{vehicle?.maker} {vehicle?.model}</h1>
+                    <p className="text-sm text-subtext-light">차량 번호: {vehicle?.plate_no ?? "정보 없음"}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-subtext-light">차량 법적 정보</p>
-                  <h1 className="mt-1 text-xl font-bold text-text-light">{vehicle?.maker} {vehicle?.model}</h1>
-                  <p className="text-sm text-subtext-light">차량 번호: {vehicle?.plate_no ?? "정보 없음"}</p>
+                <div className="flex flex-col items-end text-right text-sm text-subtext-light">
+                  <span className="font-semibold text-text-light">상태</span>
+                  <span>{message && messageTone === "success" ? "방금 저장됨" : "확인 필요"}</span>
                 </div>
               </div>
-              <div className="flex flex-col items-end text-right text-sm text-subtext-light">
-                <span className="font-semibold text-text-light">상태</span>
-                <span>{message && messageTone === "success" ? "방금 저장됨" : "확인 필요"}</span>
-              </div>
-            </div>
-          </section>
+            </section>
+
+            <section className="grid grid-cols-2 gap-3">
+              {summaryCards.map((card) => (
+                <div
+                  key={card.key}
+                  className="flex flex-col gap-3 rounded-2xl border border-border-light bg-white p-4 shadow-sm"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={`flex h-9 w-9 items-center justify-center rounded-full ${card.color}`}>
+                      <span className="material-symbols-outlined text-lg">{card.icon}</span>
+                    </span>
+                    <span className="text-sm font-semibold text-text-light">{card.label}</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-text-light">{card.subtitle}</p>
+                    <p className="text-xs text-subtext-light">{card.detail}</p>
+                  </div>
+                </div>
+              ))}
+            </section>
+          </>
         ) : (
           <>
             <div className="flex gap-2 overflow-x-auto pb-1">
@@ -297,9 +396,41 @@ export default function LegalPanel({ vehicle }) {
 
             {records.length > 0 ? (
               <section className="space-y-4 rounded-2xl border border-border-light bg-surface-light p-5 shadow-card">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-3">
                   <h2 className="text-base font-semibold text-text-light">저장된 기록</h2>
-                  <button onClick={() => loadRecords()} className="text-xs text-subtext-light hover:text-primary">새로고침</button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!activeRecordId) return;
+                        const target = records.find((record) => record.id === activeRecordId);
+                        if (target) {
+                          setForm({ ...DEFAULT_FORM, ...target });
+                        }
+                      }}
+                      disabled={!activeRecordId}
+                      className="flex h-8 w-8 items-center justify-center rounded-full border border-border-light text-subtext-light transition hover:text-primary disabled:opacity-50"
+                      aria-label="선택 기록 수정"
+                    >
+                      <span className="material-symbols-outlined text-base">edit</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteRecord(activeRecordId)}
+                      disabled={!activeRecordId || loading}
+                      className="flex h-8 w-8 items-center justify-center rounded-full border border-red-200 text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+                      aria-label="선택 기록 삭제"
+                    >
+                      <span className="material-symbols-outlined text-base">delete</span>
+                    </button>
+                    <button
+                      onClick={() => loadRecords()}
+                      className="flex h-8 w-8 items-center justify-center rounded-full border border-border-light text-subtext-light transition hover:text-primary"
+                      aria-label="저장된 기록 새로고침"
+                    >
+                      <span className="material-symbols-outlined text-base">refresh</span>
+                    </button>
+                  </div>
                 </div>
                 <div className="space-y-3">
                   {records.map((record) => (
@@ -311,7 +442,7 @@ export default function LegalPanel({ vehicle }) {
                       }}
                       className={`w-full rounded-2xl border px-4 py-3 text-left transition ${activeRecordId === record.id ? "border-primary bg-primary/5" : "border-border-light bg-white"}`}
                     >
-                      <div className="flex justify-between items-center">
+                      <div className="flex justify-between items-center gap-3">
                         <div className="text-sm">
                           <p className="font-semibold">{record.insurance_company || "기록 정보"}</p>
                           <p className="text-xs text-subtext-light">만기: {record.insurance_expiry || "-"}</p>
@@ -321,6 +452,9 @@ export default function LegalPanel({ vehicle }) {
                     </button>
                   ))}
                 </div>
+                {message && lastSavedSection === "records" && (
+                  <p className={`text-right text-xs ${messageTone === "success" ? "text-emerald-600" : "text-red-600"}`}>{message}</p>
+                )}
               </section>
             ) : (
               <p className="text-center text-sm text-subtext-light">저장된 기록이 없습니다.</p>
@@ -329,19 +463,6 @@ export default function LegalPanel({ vehicle }) {
         )}
       </div>
 
-      {/* 하단 플로팅 버튼 */}
-      <div className="fixed bottom-0 left-0 right-0 border-t border-border-light bg-surface-light/95 px-4 py-3 backdrop-blur">
-        <div className="mx-auto flex max-w-xl flex-col gap-2">
-          <button
-            onClick={() => saveData(tab)}
-            disabled={loading || !vehicle}
-            className={`flex h-12 items-center justify-center rounded-xl text-sm font-semibold transition ${loading || !vehicle ? "bg-primary/40 text-white" : "bg-primary text-white hover:bg-primary/90"}`}
-          >
-            {loading ? "저장 중..." : "현재 섹션 정보 저장"}
-          </button>
-          {message && <p className={`text-center text-xs ${messageTone === "success" ? "text-emerald-600" : "text-red-600"}`}>{message}</p>}
-        </div>
-      </div>
     </div>
   );
 }
