@@ -9,6 +9,12 @@ const LoginScreen = ({ onLoginSuccess }) => {
   const [rememberPassword, setRememberPassword] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
+  const [showReset, setShowReset] = useState(false);
+  const [resetUserId, setResetUserId] = useState("");
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetConfirm, setResetConfirm] = useState("");
+  const [resetError, setResetError] = useState("");
+  const [resetDone, setResetDone] = useState(false);
 
   useEffect(() => {
     const savedUsername = localStorage.getItem("remembered_username");
@@ -59,6 +65,40 @@ const LoginScreen = ({ onLoginSuccess }) => {
   if (showRegister) {
     return <RegisterScreen onBack={() => setShowRegister(false)} />;
   }
+
+  const handleResetSubmit = async (e) => {
+    e.preventDefault();
+    if (!resetUserId.trim()) {
+      setResetError("아이디를 입력해주세요.");
+      return;
+    }
+    if (!resetPassword || !resetConfirm) {
+      setResetError("새 비밀번호를 입력해주세요.");
+      return;
+    }
+    if (resetPassword !== resetConfirm) {
+      setResetError("비밀번호가 일치하지 않습니다.");
+      return;
+    }
+    try {
+      setResetError("");
+      await api.post("/auth/reset", { username: resetUserId.trim(), new_password: resetPassword });
+      setResetDone(true);
+      setUsername(resetUserId.trim());
+      setPassword("");
+      setTimeout(() => {
+        setShowReset(false);
+        setResetUserId("");
+        setResetPassword("");
+        setResetConfirm("");
+        setResetError("");
+        setResetDone(false);
+      }, 800);
+    } catch (err) {
+      console.error("비밀번호 재설정 실패:", err);
+      setResetError("비밀번호 재설정에 실패했습니다. 아이디를 확인해주세요.");
+    }
+  };
 
   return (
     <div className="flex min-h-screen flex-col bg-background-light text-text-light">
@@ -137,13 +177,113 @@ const LoginScreen = ({ onLoginSuccess }) => {
         </form>
 
         <div className="mt-8 flex items-center justify-center gap-6 text-sm text-subtext-light">
-          <button type="button" className="font-medium hover:text-primary">비밀번호 찾기</button>
+          <button type="button" className="font-medium hover:text-primary" onClick={() => setShowReset(true)}>
+            비밀번호 찾기
+          </button>
           <span className="h-4 w-px bg-border-light" />
           <button type="button" onClick={() => setShowRegister(true)} className="font-medium text-primary">
             회원가입
           </button>
         </div>
       </div>
+
+      {showReset && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold text-text-light">비밀번호 재설정</h2>
+              <button
+                type="button"
+                className="text-subtext-light transition hover:text-text-light"
+                onClick={() => {
+                  setShowReset(false);
+                  setResetUserId("");
+                  setResetPassword("");
+                  setResetConfirm("");
+                  setResetError("");
+                  setResetDone(false);
+                }}
+              >
+                닫기
+              </button>
+            </div>
+            <p className="mt-2 text-sm text-subtext-light">
+              아이디 확인 후 새 비밀번호를 설정하세요.
+            </p>
+            <form className="mt-4 space-y-3" onSubmit={handleResetSubmit}>
+              <label className="flex flex-col gap-2 text-sm">
+                <span className="font-medium text-text-light">아이디</span>
+                <input
+                  value={resetUserId}
+                  onChange={(e) => {
+                    setResetUserId(e.target.value);
+                    if (resetError) setResetError("");
+                    if (resetDone) setResetDone(false);
+                  }}
+                  placeholder="아이디 또는 이메일을 입력하세요"
+                  className="h-12 rounded-lg border border-border-light bg-surface-light px-4 text-base focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+              </label>
+              <label className="flex flex-col gap-2 text-sm">
+                <span className="font-medium text-text-light">새 비밀번호</span>
+                <input
+                  type="password"
+                  value={resetPassword}
+                  onChange={(e) => {
+                    setResetPassword(e.target.value);
+                    if (resetError) setResetError("");
+                    if (resetDone) setResetDone(false);
+                  }}
+                  placeholder="새 비밀번호를 입력하세요"
+                  className="h-12 rounded-lg border border-border-light bg-surface-light px-4 text-base focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+              </label>
+              <label className="flex flex-col gap-2 text-sm">
+                <span className="font-medium text-text-light">새 비밀번호 확인</span>
+                <input
+                  type="password"
+                  value={resetConfirm}
+                  onChange={(e) => {
+                    setResetConfirm(e.target.value);
+                    if (resetError) setResetError("");
+                    if (resetDone) setResetDone(false);
+                  }}
+                  placeholder="비밀번호를 다시 입력하세요"
+                  className="h-12 rounded-lg border border-border-light bg-surface-light px-4 text-base focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+              </label>
+              {resetError && <p className="text-sm text-status-danger">{resetError}</p>}
+              {resetDone && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                  비밀번호가 재설정되었습니다. 새 비밀번호로 로그인해주세요.
+                </div>
+              )}
+              <div className="flex items-center gap-3 pt-1">
+                <button
+                  type="button"
+                  className="flex h-11 flex-1 items-center justify-center rounded-lg border border-border-light text-sm font-semibold text-subtext-light transition hover:text-primary"
+                  onClick={() => {
+                    setShowReset(false);
+                    setResetUserId("");
+                    setResetPassword("");
+                    setResetConfirm("");
+                    setResetError("");
+                    setResetDone(false);
+                  }}
+                >
+                  닫기
+                </button>
+                <button
+                  type="submit"
+                  className="flex h-11 flex-1 items-center justify-center rounded-lg bg-primary text-sm font-semibold text-white transition hover:bg-primary/90"
+                >
+                  재설정
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

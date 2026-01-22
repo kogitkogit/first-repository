@@ -174,18 +174,20 @@ export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, use
       {renderList()}
 
       {open && (
-        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 p-0">
-          <div className="w-full max-w-lg rounded-t-2xl bg-background-light">
-            <button
-              type="button"
-              aria-label="닫기"
-              className="flex w-full items-center justify-center pt-3"
-              onClick={() => setOpen(false)}
-            >
-              <div className="h-1 w-10 rounded-full bg-border-light" />
-            </button>
-            <div className="px-6 pb-6 pt-4">
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-background-light shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border-light px-6 py-4">
               <h3 className="text-lg font-bold">새 차량 등록</h3>
+              <button
+                type="button"
+                aria-label="닫기"
+                className="text-subtext-light transition hover:text-text-light"
+                onClick={() => setOpen(false)}
+              >
+                닫기
+              </button>
+            </div>
+            <div className="px-6 pb-6 pt-4">
               <form className="mt-6 flex flex-col gap-4" onSubmit={createVehicle}>
                 <label className="flex flex-col gap-2">
                   <span className="text-sm font-medium">차량 번호</span>

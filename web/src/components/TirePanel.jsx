@@ -436,7 +436,7 @@ export default function TirePanel({ vehicle }) {
                 <div className="flex items-center gap-2">
                   <div className="relative">
                     <select
-                      className="appearance-none rounded-full border border-border-light bg-primary/10 py-1 text-xs font-semibold text-primary transition hover:bg-primary/20"
+                      className="appearance-none rounded-full border border-border-light bg-primary/10 py-1 pl-3 pr-8 text-xs font-semibold text-primary transition hover:bg-primary/20"
                       value={selected}
                       onChange={(e) => setSelected(e.target.value)}
                       aria-label="타이어 위치 선택"
@@ -447,8 +447,8 @@ export default function TirePanel({ vehicle }) {
                         </option>
                       ))}
                     </select>
-                    <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-sm text-primary">
-                      <span className="material-symbols-outlined text-sm">tire_repair</span>
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-primary">
+                      v
                     </span>
                   </div>
                 </div>

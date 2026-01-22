@@ -164,9 +164,16 @@ function ItemCard({ item, state, onOpenDetail, onDelete, currentMileage, alertsE
 
     return (
       <div className="relative w-full rounded-2xl border border-border-light bg-surface-light p-4 text-left shadow-card">
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
           onClick={() => onOpenDetail?.(item.key)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onOpenDetail?.(item.key);
+            }
+          }}
           className="w-full text-left transition hover:text-text-light"
         >
           <div className="flex items-start justify-between gap-3">
@@ -210,7 +217,7 @@ function ItemCard({ item, state, onOpenDetail, onDelete, currentMileage, alertsE
               </p>
             </div>
           ) : null}
-        </button>
+        </div>
         {confirmOpen ? (
           <div
             className="absolute right-3 top-12 z-10 w-40 rounded-xl border border-border-light bg-white px-3 py-2 text-xs shadow-lg"
@@ -1014,11 +1021,6 @@ export default function OtherConsumablesPanel({ currentMileage, vehicleId, apiCl
               전체 이력 보기
             </button>
           </div>
-        </div>
-        <div className="flex gap-3">
-          <button onClick={openAllHistory} className="bg-indigo-500 text-white rounded px-3 py-1 hover:bg-indigo-600">
-            전체 이력 보기
-          </button>
         </div>
       </div>
 

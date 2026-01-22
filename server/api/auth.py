@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from db.session import get_db
 from models.User import User
 from core.security import hash_password, verify_password, create_token
-from schemas.auth import RegisterIn, LoginIn, TokenOut
+from schemas.auth import RegisterIn, LoginIn, ResetPasswordIn, TokenOut
 
 router = APIRouter(tags=["auth"])
 
@@ -25,3 +25,12 @@ def login(body: LoginIn, db: Session = Depends(get_db)):
         raise HTTPException(401, "Invalid credentials")
     token = create_token(str(u.id))
     return TokenOut(access_token=token, user_id=u.id)
+
+@router.post("/reset")
+def reset_password(body: ResetPasswordIn, db: Session = Depends(get_db)):
+    u = db.query(User).filter(User.username == body.username).first()
+    if not u:
+        raise HTTPException(404, "User not found")
+    u.password_hash = hash_password(body.new_password)
+    db.commit()
+    return {"success": True}

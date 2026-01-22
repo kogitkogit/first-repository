@@ -13,6 +13,7 @@ const RegisterScreen = ({ onBack }) => {
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [policyModal, setPolicyModal] = useState({ open: false, type: null });
 
   const requiredChecked = agreements.terms && agreements.privacy;
 
@@ -49,6 +50,58 @@ const RegisterScreen = ({ onBack }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const openPolicyModal = (type) => setPolicyModal({ open: true, type });
+  const closePolicyModal = () => setPolicyModal({ open: false, type: null });
+
+  const policyTitleMap = {
+    terms: "서비스 이용약관",
+    privacy: "개인정보 수집·이용",
+    marketing: "마케팅 정보 수신",
+  };
+
+  const policyContentMap = {
+    terms: [
+      "1. 목적",
+      "본 약관은 차량 관리 서비스(이하 “서비스”) 이용과 관련하여 회사와 이용자 간의 권리, 의무 및 책임사항을 규정합니다.",
+      "",
+      "2. 서비스 제공",
+      "회사는 차량 관리, 정비 기록, 주행 정보 관리 등 서비스 기능을 제공합니다. 서비스 내용은 운영상 필요에 따라 변경될 수 있습니다.",
+      "",
+      "3. 계정 및 보안",
+      "이용자는 계정 정보를 안전하게 관리해야 하며, 계정 도용 등으로 발생한 손해에 대해 회사는 고의 또는 중대한 과실이 없는 한 책임을 지지 않습니다.",
+      "",
+      "4. 이용 제한",
+      "이용자가 법령 또는 본 약관을 위반하는 경우 회사는 서비스 이용을 제한하거나 계정을 해지할 수 있습니다.",
+      "",
+      "5. 책임 제한",
+      "회사는 천재지변, 시스템 장애 등 불가항력으로 인한 서비스 제공 불가에 대해 책임을 지지 않습니다.",
+    ],
+    privacy: [
+      "1. 수집 항목",
+      "필수: 아이디(이메일), 비밀번호, 차량 정보(차량 번호, 제조사, 모델, 연식, 주행거리 등)",
+      "선택: 차량 소유주 이름, 마케팅 수신 여부",
+      "",
+      "2. 수집 목적",
+      "회원가입 및 본인 확인, 서비스 제공(차량 관리/정비 이력/주행 정보), 고객 문의 대응",
+      "",
+      "3. 보관 및 이용 기간",
+      "회원 탈퇴 시까지 보관하며, 관계 법령에 따라 보관이 필요한 정보는 해당 기간 동안 보관합니다.",
+      "",
+      "4. 제공 및 위탁",
+      "원칙적으로 외부에 제공하지 않으며, 서비스 운영에 필요한 경우 사전 고지 후 동의를 받습니다.",
+    ],
+    marketing: [
+      "1. 수신 항목",
+      "이메일, 앱 알림 등",
+      "",
+      "2. 수신 목적",
+      "프로모션, 이벤트, 맞춤 혜택 안내",
+      "",
+      "3. 철회 방법",
+      "환경설정 또는 고객센터를 통해 언제든지 수신 동의를 철회할 수 있습니다.",
+    ],
   };
 
   return (
@@ -133,7 +186,13 @@ const RegisterScreen = ({ onBack }) => {
                   />
                   <span className="text-sm">(필수) 서비스 이용약관 동의</span>
                 </div>
-                <button type="button" className="text-xs text-subtext-light underline">보기</button>
+                <button
+                  type="button"
+                  className="text-xs text-subtext-light underline"
+                  onClick={() => openPolicyModal("terms")}
+                >
+                  보기
+                </button>
               </label>
               <label className="flex items-center justify-between gap-3 py-2">
                 <div className="flex items-center gap-3">
@@ -145,7 +204,13 @@ const RegisterScreen = ({ onBack }) => {
                   />
                   <span className="text-sm">(필수) 개인정보 수집·이용 동의</span>
                 </div>
-                <button type="button" className="text-xs text-subtext-light underline">보기</button>
+                <button
+                  type="button"
+                  className="text-xs text-subtext-light underline"
+                  onClick={() => openPolicyModal("privacy")}
+                >
+                  보기
+                </button>
               </label>
               <label className="flex items-center justify-between gap-3 py-2">
                 <div className="flex items-center gap-3">
@@ -157,7 +222,13 @@ const RegisterScreen = ({ onBack }) => {
                   />
                   <span className="text-sm">(선택) 마케팅 정보 수신 동의</span>
                 </div>
-                <button type="button" className="text-xs text-subtext-light underline">보기</button>
+                <button
+                  type="button"
+                  className="text-xs text-subtext-light underline"
+                  onClick={() => openPolicyModal("marketing")}
+                >
+                  보기
+                </button>
               </label>
             </div>
           </section>
@@ -182,6 +253,39 @@ const RegisterScreen = ({ onBack }) => {
         이미 계정이 있다면?
         <button type="button" onClick={onBack} className="ml-2 font-semibold text-primary">로그인</button>
       </footer>
+
+      {policyModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold text-text-light">
+                {policyTitleMap[policyModal.type] || "약관"}
+              </h2>
+              <button
+                type="button"
+                className="text-subtext-light transition hover:text-text-light"
+                onClick={closePolicyModal}
+              >
+                닫기
+              </button>
+            </div>
+            <div className="mt-4 max-h-[60vh] space-y-2 overflow-auto text-sm text-text-light">
+              {(policyContentMap[policyModal.type] || ["표시할 내용이 없습니다."]).map((line, idx) => (
+                <p key={`${policyModal.type}-${idx}`}>{line}</p>
+              ))}
+            </div>
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary/90"
+                onClick={closePolicyModal}
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -7,6 +7,10 @@ class RegisterIn(BaseModel):
 class LoginIn(BaseModel):
     username: str
     password: str
+
+class ResetPasswordIn(BaseModel):
+    username: str
+    new_password: str
     
 class TokenOut(BaseModel):
     access_token: str

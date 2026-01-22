@@ -68,9 +68,21 @@ const scheduleIconMap = {
   "납부 여부": "check_circle",
 };
 
-function InfoItem({ label, value, badge, icon }) {
+function InfoItem({ label, value, badge, icon, onClick }) {
+  const Wrapper = onClick ? "button" : "div";
+  const wrapperProps = onClick
+    ? {
+        type: "button",
+        onClick,
+        className:
+          "w-full rounded-2xl border border-border-light bg-surface-light p-4 text-left shadow-sm transition hover:border-primary",
+      }
+    : {
+        className: "rounded-2xl border border-border-light bg-surface-light p-4 shadow-sm",
+      };
+
   return (
-    <div className="rounded-2xl border border-border-light bg-surface-light p-4 shadow-sm">
+    <Wrapper {...wrapperProps}>
       <div className="flex items-start gap-3">
         {icon ? (
           <span className="material-symbols-outlined flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -87,7 +99,7 @@ function InfoItem({ label, value, badge, icon }) {
           ) : null}
         </div>
       </div>
-    </div>
+    </Wrapper>
   );
 }
 
@@ -96,6 +108,12 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [detailFold, setDetailFold] = useState({ insurance: true, inspection: true });
+  const [currentOdo, setCurrentOdo] = useState(null);
+  const [odoDeleteOpen, setOdoDeleteOpen] = useState(false);
+  const [odoLogs, setOdoLogs] = useState([]);
+  const [odoLogLoading, setOdoLogLoading] = useState(false);
+  const [odoLogError, setOdoLogError] = useState("");
+  const [odoSelected, setOdoSelected] = useState({});
 
   const loadLegalInfo = useCallback(async () => {
     if (!vehicle?.id) {
@@ -117,15 +135,99 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
     }
   }, [vehicle?.id]);
 
+  const loadCurrentOdo = useCallback(async () => {
+    if (!vehicle?.id) {
+      setCurrentOdo(null);
+      return;
+    }
+    try {
+      const res = await api.get("/odometer/current", { params: { vehicleId: vehicle.id } });
+      setCurrentOdo(res.data?.odo_km ?? null);
+    } catch (err) {
+      console.error("주행거리 정보를 불러오지 못했습니다.", err);
+      setCurrentOdo(null);
+    }
+  }, [vehicle?.id]);
+
   useEffect(() => {
     loadLegalInfo();
-  }, [loadLegalInfo]);
+    loadCurrentOdo();
+  }, [loadLegalInfo, loadCurrentOdo]);
 
   const handleRefreshClick = async () => {
     await Promise.all([
       loadLegalInfo(),
+      loadCurrentOdo(),
       onRefresh ? onRefresh(vehicle.id) : Promise.resolve(),
     ]);
+  };
+
+  const loadOdoLogs = async () => {
+    if (!vehicle?.id) return;
+    setOdoLogLoading(true);
+    setOdoLogError("");
+    try {
+      const res = await api.get("/odometer/logs", { params: { vehicleId: vehicle.id } });
+      const rows = Array.isArray(res.data) ? res.data : [];
+      setOdoLogs(rows);
+      setOdoSelected({});
+    } catch (err) {
+      console.error("주행 이력 불러오기 실패:", err);
+      setOdoLogError("주행 이력을 불러오지 못했습니다.");
+    } finally {
+      setOdoLogLoading(false);
+    }
+  };
+
+  const openOdoDeleteModal = async () => {
+    setOdoDeleteOpen(true);
+    await loadOdoLogs();
+  };
+
+  const closeOdoDeleteModal = () => {
+    setOdoDeleteOpen(false);
+    setOdoSelected({});
+  };
+
+  const toggleOdoSelected = (id) => {
+    setOdoSelected((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const toggleOdoSelectAll = () => {
+    if (!odoLogs.length) return;
+    const selectedCount = Object.values(odoSelected).filter(Boolean).length;
+    if (selectedCount === odoLogs.length) {
+      setOdoSelected({});
+      return;
+    }
+    const next = {};
+    odoLogs.forEach((row) => {
+      next[row.id] = true;
+    });
+    setOdoSelected(next);
+  };
+
+  const handleOdoDelete = async () => {
+    if (!vehicle?.id) return;
+    const ids = Object.keys(odoSelected).filter((id) => odoSelected[id]).map(Number);
+    if (!ids.length) {
+      alert("삭제할 이력을 선택해주세요.");
+      return;
+    }
+    if (!confirm("선택한 주행 이력을 삭제할까요? 삭제 후 복구할 수 없습니다.")) {
+      return;
+    }
+    try {
+      await api.post("/odometer/delete", { vehicleId: vehicle.id, ids });
+      if (onRefresh) {
+        await onRefresh(vehicle.id);
+      }
+      await loadCurrentOdo();
+      await loadOdoLogs();
+    } catch (err) {
+      console.error("주행 이력 삭제 실패:", err);
+      alert("주행 이력 삭제에 실패했습니다.");
+    }
   };
 
   const insuranceExpiry = legalInfo?.insurance_expiry ?? vehicle?.insurance_exp;
@@ -133,19 +235,21 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
 
   const baseInfoItems = useMemo(() => {
     if (!vehicle) return [];
+    const odoLabel =
+      currentOdo != null ? `${formatNumber(currentOdo)} km` : "주행거리 정보 없음";
     const items = [
       { label: "차량 번호", value: vehicle.plate_no || "-" },
       { label: "제조사", value: vehicle.maker || "-" },
       { label: "차량 모델", value: vehicle.model || "-" },
       { label: "연식", value: vehicle.year || "-" },
-      { label: "현재 주행거리", value: `${formatNumber(vehicle.odo_km)} km` },
+      { label: "현재 주행거리", value: odoLabel },
       { label: "차량 종류", value: vehicle.makerType || "-" },
     ];
     return items.map((item) => ({
       ...item,
       icon: baseIconMap[item.label] || "info",
     }));
-  }, [vehicle]);
+  }, [vehicle, currentOdo]);
 
   const insuranceItems = useMemo(() => {
     const items = [
@@ -214,9 +318,11 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
     const titleParts = [vehicle.maker, vehicle.model].filter(Boolean);
     const title = titleParts.length ? titleParts.join(" ") : vehicle.plate_no || "차량 정보";
     const subtitle = vehicle.plate_no ? `차량 번호 ${vehicle.plate_no}` : "차량 번호 정보 없음";
+    const odoLabel =
+      currentOdo != null ? `${formatNumber(currentOdo)} km` : "주행거리 정보 없음";
     const chips = [
       { icon: "calendar_month", label: "연식", value: vehicle.year || "-" },
-      { icon: "speed", label: "현재 주행거리", value: `${formatNumber(vehicle.odo_km)} km` },
+      { icon: "speed", label: "현재 주행거리", value: odoLabel, isOdo: true },
       { icon: "event_available", label: "보험 만기", value: formatDate(insuranceExpiry) },
     ];
     return {
@@ -224,7 +330,7 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
       subtitle,
       chips,
     };
-  }, [vehicle, insuranceExpiry]);
+  }, [vehicle, insuranceExpiry, currentOdo]);
 
   if (!vehicle) {
     return (
@@ -283,22 +389,41 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {mainSummary.chips.map((chip) => (
-            <div
-              key={chip.label}
-              className="flex items-center gap-3 rounded-xl border border-border-light bg-background-light px-3 py-3"
-            >
-              <span className="material-symbols-outlined flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-                {chip.icon}
-              </span>
-              <div className="space-y-0.5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-subtext-light">
-                  {chip.label}
-                </p>
-                <p className="text-sm font-semibold text-text-light">{chip.value}</p>
+          {mainSummary.chips.map((chip) => {
+            const content = (
+              <>
+                <span className="material-symbols-outlined flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  {chip.icon}
+                </span>
+                <div className="space-y-0.5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-subtext-light">
+                    {chip.label}
+                  </p>
+                  <p className="text-sm font-semibold text-text-light">{chip.value}</p>
+                </div>
+              </>
+            );
+            if (chip.isOdo) {
+              return (
+                <button
+                  key={chip.label}
+                  type="button"
+                  onClick={openOdoDeleteModal}
+                  className="flex items-center gap-3 rounded-xl border border-border-light bg-background-light px-3 py-3 text-left transition hover:border-primary"
+                >
+                  {content}
+                </button>
+              );
+            }
+            return (
+              <div
+                key={chip.label}
+                className="flex items-center gap-3 rounded-xl border border-border-light bg-background-light px-3 py-3"
+              >
+                {content}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
@@ -309,7 +434,13 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
         </div>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
           {baseInfoItems.map((item) => (
-            <InfoItem key={item.label} label={item.label} value={item.value} icon={item.icon} />
+            <InfoItem
+              key={item.label}
+              label={item.label}
+              value={item.value}
+              icon={item.icon}
+              onClick={item.label === "현재 주행거리" ? openOdoDeleteModal : undefined}
+            />
           ))}
         </div>
       </section>
@@ -395,6 +526,78 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
             {legalInfo.memo}
           </div>
         </section>
+      )}
+
+      {odoDeleteOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-border-light bg-background-light p-5 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold text-text-light">주행 이력 삭제</h3>
+              <button
+                type="button"
+                className="text-subtext-light transition hover:text-text-light"
+                onClick={closeOdoDeleteModal}
+              >
+                닫기
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-subtext-light">
+              삭제할 이력을 선택하세요. 삭제된 이력은 복구할 수 없습니다.
+            </p>
+            <div className="mt-3 max-h-[50vh] space-y-2 overflow-auto">
+              {odoLogLoading ? (
+                <div className="rounded-xl border border-border-light bg-background-light/70 px-4 py-4 text-center text-sm text-subtext-light">
+                  주행 이력을 불러오는 중입니다...
+                </div>
+              ) : odoLogError ? (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                  {odoLogError}
+                </div>
+              ) : odoLogs.length === 0 ? (
+                <div className="rounded-xl border border-border-light bg-background-light/70 px-4 py-4 text-center text-sm text-subtext-light">
+                  저장된 주행 이력이 없습니다.
+                </div>
+              ) : (
+                odoLogs.map((row) => (
+                  <label
+                    key={row.id}
+                    className="flex items-center gap-3 rounded-xl border border-border-light bg-white px-3 py-2"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={Boolean(odoSelected[row.id])}
+                      onChange={() => toggleOdoSelected(row.id)}
+                    />
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-text-light">
+                        {Number(row.odo_km || 0).toLocaleString()} km
+                      </p>
+                      <p className="text-xs text-subtext-light">{row.date || "-"}</p>
+                    </div>
+                  </label>
+                ))
+              )}
+            </div>
+            <div className="mt-4 flex items-center gap-2">
+              <button
+                type="button"
+                className="flex-1 rounded-full border border-border-light px-4 py-2 text-sm font-semibold text-subtext-light transition hover:text-primary"
+                onClick={toggleOdoSelectAll}
+                disabled={odoLogLoading || odoLogs.length === 0}
+              >
+                전체 선택
+              </button>
+              <button
+                type="button"
+                className="flex-1 rounded-full bg-red-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-600"
+                onClick={handleOdoDelete}
+                disabled={odoLogLoading || odoLogs.length === 0}
+              >
+                선택 삭제
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

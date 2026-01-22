@@ -14,7 +14,6 @@ const menu = [
   { key: "maintenance", label: "정비 이력", icon: "build_circle", path: "/maintenance" },
   { key: "legal", label: "법적 서류", icon: "gavel", path: "/legal" },
   { key: "fuel", label: "주유 관리", icon: "local_gas_station", path: "/fuel" },
-  { key: "settings", label: "환경 설정", icon: "settings", path: "/settings" },
 ];
 
 const DUE_TONE_PRIORITY = { danger: 0, warn: 1, ok: 2, muted: 3 };
@@ -35,6 +34,12 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
   const [dueSummary, setDueSummary] = useState({ loading: false, items: [], error: null });
   const [dueModalOpen, setDueModalOpen] = useState(false);
   const [odoDateError, setOdoDateError] = useState("");
+  const [odoKmError, setOdoKmError] = useState("");
+  const [odoDeleteOpen, setOdoDeleteOpen] = useState(false);
+  const [odoLogs, setOdoLogs] = useState([]);
+  const [odoLogLoading, setOdoLogLoading] = useState(false);
+  const [odoLogError, setOdoLogError] = useState("");
+  const [odoSelected, setOdoSelected] = useState({});
 
   const analysis = useDrivingAnalysis(vehicle);
   const {
@@ -147,14 +152,25 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
     }
     setOdoDateError("");
     if (!odoKm) return;
+    const nextKm = Number(odoKm);
+    if (!Number.isFinite(nextKm) || nextKm <= 0) {
+      setOdoKmError("유효한 주행거리를 입력해주세요.");
+      return;
+    }
+    if (currentOdo != null && nextKm < Number(currentOdo)) {
+      setOdoKmError("이전 주행거리보다 작은 값은 저장할 수 없습니다.");
+      return;
+    }
+    setOdoKmError("");
     api
-      .post("/odometer/update", { vehicleId: vehicle.id, date: odoDate, odo_km: Number(odoKm) })
+      .post("/odometer/update", { vehicleId: vehicle.id, date: odoDate, odo_km: nextKm })
       .then(() => {
         setCurrentOdo(Number(odoKm));
         setOdoEditing(false);
         setOdoDate("");
         setOdoKm("");
         setOdoDateError("");
+        setOdoKmError("");
         fetchDistance();
         loadDueSummary();
         if (onVehicleRefresh) {
@@ -164,6 +180,74 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
       .catch(() => {
         alert("주행거리 업데이트 중 오류가 발생했습니다. 다시 시도해주세요.");
       });
+  };
+
+  const loadOdoLogs = async () => {
+    if (!vehicle?.id) return;
+    setOdoLogLoading(true);
+    setOdoLogError("");
+    try {
+      const res = await api.get("/odometer/logs", { params: { vehicleId: vehicle.id } });
+      const rows = Array.isArray(res.data) ? res.data : [];
+      setOdoLogs(rows);
+      setOdoSelected({});
+    } catch (error) {
+      console.error("주행 이력 불러오기 실패:", error);
+      setOdoLogError("주행 이력을 불러오지 못했습니다.");
+    } finally {
+      setOdoLogLoading(false);
+    }
+  };
+
+  const openOdoDeleteModal = async () => {
+    setOdoDeleteOpen(true);
+    await loadOdoLogs();
+  };
+
+  const closeOdoDeleteModal = () => {
+    setOdoDeleteOpen(false);
+    setOdoSelected({});
+  };
+
+  const toggleOdoSelected = (id) => {
+    setOdoSelected((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const toggleOdoSelectAll = () => {
+    if (!odoLogs.length) return;
+    const selectedCount = Object.values(odoSelected).filter(Boolean).length;
+    if (selectedCount === odoLogs.length) {
+      setOdoSelected({});
+      return;
+    }
+    const next = {};
+    odoLogs.forEach((row) => {
+      next[row.id] = true;
+    });
+    setOdoSelected(next);
+  };
+
+  const handleOdoDelete = async () => {
+    if (!vehicle?.id) return;
+    const ids = Object.keys(odoSelected).filter((id) => odoSelected[id]).map(Number);
+    if (!ids.length) {
+      alert("삭제할 이력을 선택해주세요.");
+      return;
+    }
+    if (!confirm("선택한 주행 이력을 삭제할까요? 삭제 후 복구할 수 없습니다.")) {
+      return;
+    }
+    try {
+      await api.post("/odometer/delete", { vehicleId: vehicle.id, ids });
+      await Promise.all([
+        loadOdoLogs(),
+        api.get("/odometer/current", { params: { vehicleId: vehicle.id } }).then((r) => setCurrentOdo(r.data?.odo_km)),
+        onVehicleRefresh ? onVehicleRefresh(vehicle.id) : Promise.resolve(),
+      ]);
+    } catch (error) {
+      console.error("주행 이력 삭제 실패:", error);
+      alert("주행 이력 삭제에 실패했습니다.");
+    }
   };
 
   const formattedExpense = `${Number(expenseMonthly || 0).toLocaleString()} 원`
@@ -182,11 +266,22 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
   const vehicleSubtitle = [vehicle?.maker, vehicle?.model, vehicle?.year]
     .filter(Boolean)
     .join(" · ") || "차량 기본 정보를 입력해주세요"
-  const primaryOdo = currentOdo ?? vehicle?.odo_km ?? null
-  const currentMileageLabel =
-    primaryOdo != null ? `${Number(primaryOdo).toLocaleString()} km` : "주행거리 정보 없음"
+  const currentMileageValue =
+    currentOdo != null ? Number(currentOdo).toLocaleString() : "주행거리 정보 없음";
+  const hasCurrentOdo = currentOdo != null;
 
   const dueCount = dueSummary.items.length;
+  const panelCardStyles = [
+    { icon: "text-amber-600" },
+    { icon: "text-sky-600" },
+    { icon: "text-emerald-600" },
+    { icon: "text-rose-600" },
+    { icon: "text-indigo-600" },
+    { icon: "text-teal-600" },
+    { icon: "text-lime-600" },
+    { icon: "text-orange-600" },
+    { icon: "text-violet-600" },
+  ];
 
   const handleDueItemSelect = useCallback(
     (item) => {
@@ -198,34 +293,62 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
   );
 
   return (
-    <div className="space-y-6 px-4 py-6">
+    <div className="space-y-4 px-4 py-6">
       <section className="rounded-2xl border border-border-light bg-surface-light p-5 shadow-card">
-        <div className="space-y-4">
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <h2 className="text-xl font-bold text-text-light">{vehicleTitle}</h2>
-              <div className="flex items-center gap-2">
-              <p className="text-sm text-subtext-light">{vehicleSubtitle}</p>
-              <div className="inline-flex items-center gap-3 rounded-full border border-border-light bg-background-light/80 px-3 py-1 text-xs text-subtext-light">
-                <span className="font-semibold text-text-light">{currentMileageLabel}</span>
+          <div className="space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <h2 className="text-xl font-bold text-text-light">{vehicleTitle}</h2>
+                <p className="text-sm text-subtext-light">{vehicleSubtitle}</p>
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-full bg-primary/5 px-3 py-1 text-xs font-semibold text-primary">
+                <span className={`h-2 w-2 rounded-full ${dueCount > 0 ? "bg-amber-500" : "bg-emerald-500"}`} />
+                <span>{dueCount > 0 ? "점검 필요" : "정상 상태"}</span>
+              </div>
+            </div>
+
+            <div className="flex w-full items-center justify-between gap-3 rounded-xl border border-border-light/60 bg-background-light/60 px-4 py-3">
+              <div className="flex-1 space-y-1 text-left">
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-subtext-light">현재 주행거리</p>
+                <div className="flex items-baseline gap-1">
+                  <span className={`font-extrabold text-text-light ${hasCurrentOdo ? "text-2xl" : "text-base"}`}>
+                    {currentMileageValue}
+                  </span>
+                  {hasCurrentOdo ? (
+                    <span className="text-lg font-bold text-subtext-light">km</span>
+                  ) : null}
+                </div>
               </div>
               <button
                 type="button"
-                onClick={() => setOdoEditing((prev) => !prev)}
-                className="flex items-center gap-2 rounded-full bg-primary px-3 py-1 text-xs font-semibold text-white transition hover:bg-primary/90"
+                onClick={openOdoDeleteModal}
+                className="flex items-center gap-2 rounded-lg border border-border-light bg-white px-3 py-2 text-xs font-bold text-subtext-light transition hover:text-text-light"
               >
-                <span className="material-symbols-outlined text-base">{odoEditing ? "close" : "speed"}</span>
-                {odoEditing ? "입력 취소" : "주행거리 업데이트"}
+                <span className="material-symbols-outlined text-sm">history</span>
+                이력보기
               </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const today = new Date().toISOString().slice(0, 10);
+                  setOdoDate(today);
+                  setOdoKmError("");
+                  setOdoEditing(true);
+                }}
+                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-bold text-white transition hover:bg-primary/90"
+              >
+                <span className="material-symbols-outlined text-sm">edit</span>
+                업데이트
+              </button>
             </div>
+
             <div className="flex flex-wrap items-center gap-2">
               
               {!dueSummary.loading && !dueSummary.error && dueCount > 0 && (
                 <button
                   type="button"
                   onClick={() => setDueModalOpen(true)}
-                  className="flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-6 py-2 text-xs font-semibold text-amber-700 transition hover:bg-amber-100"
+                  className="flex w-full items-center justify-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-6 py-2 text-center text-xs font-semibold text-amber-700 transition hover:bg-amber-100"
                 >
                   <span className="material-symbols-outlined text-base">warning</span>
                   <span>교체가 필요한 항목이 있습니다. 클릭해서 확인해보세요.</span>
@@ -248,58 +371,87 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
           )}
 
           {odoEditing && (
-            <div className="grid gap-3 rounded-xl border border-border-light bg-background-light/70 p-4 sm:grid-cols-3">
-              <label className="flex flex-col gap-2 text-sm">
-                <span className="font-medium text-text-light">기록 날짜</span>
-                <input
-                  type="date"
-                  value={odoDate}
-                  onChange={(e) => {
-                    setOdoDate(e.target.value);
-                    if (odoDateError) {
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+              <div className="w-full max-w-md rounded-2xl border border-border-light bg-background-light p-5 shadow-2xl">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-semibold text-text-light">주행거리 업데이트</h3>
+                  <button
+                    type="button"
+                    className="text-subtext-light transition hover:text-text-light"
+                    onClick={() => {
+                      setOdoEditing(false);
+                      setOdoDate("");
+                      setOdoKm("");
                       setOdoDateError("");
-                    }
-                  }}
-                  className="h-11 rounded-lg border border-border-light px-3 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
-                />
-                {odoDateError ? (
-                  <p className="text-xs font-semibold text-red-500">{odoDateError}</p>
-                ) : null}
-              </label>
-              <label className="flex flex-col gap-2 text-sm sm:col-span-2">
-                <span className="font-medium text-text-light">주행거리 (km)</span>
-                <input
-                  type="number"
-                  value={odoKm}
-                  onChange={(e) => setOdoKm(e.target.value)}
-                  placeholder="예: 130000"
-                  className="h-11 rounded-lg border border-border-light px-3 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
-                />
-              </label>
-              <div className="sm:col-span-3 flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={handleOdoSave}
-                  className="flex h-11 flex-1 items-center justify-center rounded-lg bg-primary text-sm font-semibold text-white transition hover:bg-primary/90"
-                >
-                  주행거리 저장
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOdoEditing(false);
-                    setOdoDate("");
-                    setOdoKm("");
-                    setOdoDateError("");
-                  }}
-                  className="flex h-11 flex-1 items-center justify-center rounded-lg border border-border-light text-sm font-semibold text-subtext-light transition hover:text-primary"
-                >
-                  취소
-                </button>
+                    }}
+                  >
+                    닫기
+                  </button>
+                </div>
+                <div className="mt-4 grid gap-3">
+                  <label className="flex flex-col gap-2 text-sm">
+                    <span className="font-medium text-text-light">기록 날짜</span>
+                    <input
+                      type="date"
+                      value={odoDate}
+                      onChange={(e) => {
+                        setOdoDate(e.target.value);
+                        if (odoDateError) {
+                          setOdoDateError("");
+                        }
+                      }}
+                      className="h-11 rounded-lg border border-border-light px-3 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    />
+                    {odoDateError ? (
+                      <p className="text-xs font-semibold text-red-500">{odoDateError}</p>
+                    ) : null}
+                  </label>
+                  <label className="flex flex-col gap-2 text-sm">
+                    <span className="font-medium text-text-light">주행거리 (km)</span>
+                    <input
+                      type="number"
+                      value={odoKm}
+                      onChange={(e) => {
+                        setOdoKm(e.target.value);
+                        if (odoKmError) {
+                          setOdoKmError("");
+                        }
+                      }}
+                      placeholder="예: 130000"
+                      className="h-11 rounded-lg border border-border-light px-3 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    />
+                    {odoKmError ? (
+                      <p className="text-xs font-semibold text-red-500">{odoKmError}</p>
+                    ) : null}
+                  </label>
+                  <div className="flex items-center gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleOdoSave}
+                      className="flex h-11 flex-1 items-center justify-center rounded-lg bg-primary text-sm font-semibold text-white transition hover:bg-primary/90"
+                    >
+                      주행거리 저장
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOdoEditing(false);
+                        setOdoDate("");
+                        setOdoKm("");
+                        setOdoDateError("");
+                      }}
+                      className="flex h-11 flex-1 items-center justify-center rounded-lg border border-border-light text-sm font-semibold text-subtext-light transition hover:text-primary"
+                    >
+                      취소
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           )}
-        </div>
+      </section>
+      <section className="rounded-xl border border-border-light bg-white px-4 py-3 text-center text-xs font-semibold text-subtext-light shadow-sm">
+        광고 영역
       </section>
       <section className="grid grid-cols-3 gap-3">
         {metrics.map((metric) => {
@@ -330,25 +482,27 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
         })}
       </section>
 
-      <section className="rounded-2xl border border-primary bg-gradient-to-b from-primary/10 via-primary/5 to-surface-light p-5 shadow-card">
+      <section className="rounded-2xl border border-primary bg-primary/10 p-3 shadow-card">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-base font-semibold text-text-light">관심 패널 바로가기</h3>
           <span className="text-xs text-primary">필요한 기능을 빠르게 열어보세요</span>
         </div>
-        <div className="grid grid-cols-3 gap-3">
-          {menu.map((m) => (
+        <div className="grid grid-cols-4 gap-1.5">
+          {menu.map((m, index) => {
+            const style = panelCardStyles[index % panelCardStyles.length];
+            return (
             <button
               key={m.key}
               type="button"
-              className="aspect-square rounded-2xl bg-white/90 p-4 text-text-light shadow-card transition hover:bg-primary hover:text-white"
+              className={`aspect-square rounded-xl bg-white p-2 text-text-light shadow-sm transition hover:bg-primary hover:text-white`}
               onClick={() => navigate(m.path)}
             >
-              <div className="flex h-full flex-col items-center justify-center gap-2">
-                <span className="material-symbols-outlined text-3xl">{m.icon}</span>
+              <div className="flex h-full flex-col items-center justify-center gap-2.5">
+                <span className={`material-symbols-outlined text-3xl ${style.icon}`}>{m.icon}</span>
                 <span className="text-sm font-semibold">{m.label}</span>
               </div>
             </button>
-          ))}
+          )})}
         </div>
       </section>
 
@@ -359,6 +513,78 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
         onReload={loadDueSummary}
         onSelectItem={handleDueItemSelect}
       />
+
+      {odoDeleteOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-border-light bg-background-light p-5 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold text-text-light">주행 이력 삭제</h3>
+              <button
+                type="button"
+                className="text-subtext-light transition hover:text-text-light"
+                onClick={closeOdoDeleteModal}
+              >
+                닫기
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-subtext-light">
+              삭제할 이력을 선택하세요. 삭제된 이력은 복구할 수 없습니다.
+            </p>
+            <div className="mt-3 max-h-[50vh] space-y-2 overflow-auto">
+              {odoLogLoading ? (
+                <div className="rounded-xl border border-border-light bg-background-light/70 px-4 py-4 text-center text-sm text-subtext-light">
+                  주행 이력을 불러오는 중입니다...
+                </div>
+              ) : odoLogError ? (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                  {odoLogError}
+                </div>
+              ) : odoLogs.length === 0 ? (
+                <div className="rounded-xl border border-border-light bg-background-light/70 px-4 py-4 text-center text-sm text-subtext-light">
+                  저장된 주행 이력이 없습니다.
+                </div>
+              ) : (
+                odoLogs.map((row) => (
+                  <label
+                    key={row.id}
+                    className="flex items-center gap-3 rounded-xl border border-border-light bg-white px-3 py-2"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={Boolean(odoSelected[row.id])}
+                      onChange={() => toggleOdoSelected(row.id)}
+                    />
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-text-light">
+                        {Number(row.odo_km || 0).toLocaleString()} km
+                      </p>
+                      <p className="text-xs text-subtext-light">{row.date || "-"}</p>
+                    </div>
+                  </label>
+                ))
+              )}
+            </div>
+            <div className="mt-4 flex items-center gap-2">
+              <button
+                type="button"
+                className="flex-1 rounded-full border border-border-light px-4 py-2 text-sm font-semibold text-subtext-light transition hover:text-primary"
+                onClick={toggleOdoSelectAll}
+                disabled={odoLogLoading || odoLogs.length === 0}
+              >
+                전체 선택
+              </button>
+              <button
+                type="button"
+                className="flex-1 rounded-full bg-red-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-600"
+                onClick={handleOdoDelete}
+                disabled={odoLogLoading || odoLogs.length === 0}
+              >
+                선택 삭제
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

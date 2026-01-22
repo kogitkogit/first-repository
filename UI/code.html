@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ko"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>내 차고 대시보드</title>
+<link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&amp;family=Nanum+Pen+Script&amp;family=Inter:wght@400;500;600;700;800&amp;family=Noto+Sans+KR:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<style type="text/tailwindcss">
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            font-size: 24px;
+        }
+        .handwriting {
+            font-family: 'Gaegu', cursive;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#1173d4",
+                        "background-light": "#f2f4f7",
+                        "background-dark": "#101922",
+                        "surface-light": "#ffffff",
+                        "surface-dark": "#1a2530",
+                        "text-light": "#1a1c1e",
+                        "text-dark": "#e0e7f0",
+                        "subtext-light": "#6b7280",
+                        "subtext-dark": "#89a2bd",
+                        "border-light": "#e5e7eb",
+                        "border-dark": "#364559",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "Noto Sans KR", "sans-serif"],
+                        "hand": ["Gaegu", "cursive"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "1rem", "2xl": "1.5rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            min-height: 100dvh;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display">
+<div class="relative flex min-h-screen w-full flex-col group/design-root overflow-x-hidden">
+<div class="flex flex-col gap-2 bg-background-light dark:bg-background-dark p-4 pb-0 sticky top-0 z-10">
+<div class="flex items-center h-12 justify-between">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-2xl cursor-pointer text-text-light dark:text-text-dark">menu</span>
+<h1 class="text-text-light dark:text-text-dark tracking-tight text-xl font-bold leading-tight handwriting">내차수첩</h1>
+</div>
+<div class="flex items-center gap-2">
+<button class="flex items-center justify-center h-10 w-10 rounded-full bg-white dark:bg-surface-dark border border-border-light dark:border-border-dark text-text-light dark:text-text-dark">
+<span class="material-symbols-outlined text-2xl relative">
+                            notifications
+                            <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+</span>
+</button>
+</div>
+</div>
+</div>
+<main class="flex-grow pb-24">
+<div class="p-4">
+<div class="bg-white dark:bg-surface-dark rounded-2xl p-5 shadow-sm border border-border-light dark:border-border-dark flex flex-col gap-5">
+<div class="flex items-center justify-between">
+<div class="flex flex-col">
+<h2 class="text-text-light dark:text-text-dark text-2xl font-bold handwriting">붕붕이 (Model 3)</h2>
+<p class="text-subtext-light dark:text-subtext-dark text-sm font-medium tracking-wide">12가 3456</p>
+</div>
+<div class="bg-primary/5 dark:bg-primary/20 px-3 py-1.5 rounded-full flex items-center gap-1.5">
+<span class="w-2 h-2 bg-green-500 rounded-full"></span>
+<span class="text-xs font-bold text-primary dark:text-blue-400">정상 상태</span>
+</div>
+</div>
+<div class="bg-background-light/50 dark:bg-background-dark/30 rounded-xl p-4 flex items-center justify-between border border-border-light/50">
+<div class="flex flex-col gap-0.5">
+<p class="text-subtext-light dark:text-subtext-dark text-xs font-bold uppercase tracking-widest">현재 주행거리</p>
+<div class="flex items-baseline gap-1">
+<span class="text-text-light dark:text-text-dark text-3xl font-extrabold tracking-tight">42,195</span>
+<span class="text-subtext-light dark:text-subtext-dark text-lg font-bold">km</span>
+</div>
+</div>
+<button class="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-primary text-white rounded-lg shadow-sm active:scale-95 transition-all text-sm font-bold">
+<span class="material-symbols-outlined text-sm">edit</span>
+                            업데이트
+                        </button>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-xl">speed</span>
+</div>
+<div class="flex flex-col">
+<p class="text-[10px] text-subtext-light dark:text-subtext-dark font-medium leading-none">최근 주행</p>
+<p class="text-sm font-bold text-text-light dark:text-text-dark handwriting">어제 30km</p>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-orange-50 dark:bg-orange-900/20 flex items-center justify-center text-orange-500">
+<span class="material-symbols-outlined text-xl">payments</span>
+</div>
+<div class="flex flex-col">
+<p class="text-[10px] text-subtext-light dark:text-subtext-dark font-medium leading-none">최근 지출</p>
+<p class="text-sm font-bold text-text-light dark:text-text-dark handwriting">₩50,000</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<h2 class="text-text-light dark:text-text-dark text-lg font-bold leading-tight px-5 pb-2 pt-2 handwriting">관리 메뉴</h2>
+<div class="grid grid-cols-3 gap-3 p-4">
+<div class="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-border-light dark:border-border-dark bg-white dark:bg-surface-dark p-4 text-center shadow-sm">
+<div class="flex items-center justify-center h-10 w-10 rounded-full bg-blue-50 text-primary dark:bg-primary/20">
+<span class="material-symbols-outlined">build</span>
+</div>
+<h3 class="text-text-light dark:text-text-dark text-xs font-bold">정비 관리</h3>
+</div>
+<div class="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-border-light dark:border-border-dark bg-white dark:bg-surface-dark p-4 text-center shadow-sm">
+<div class="flex items-center justify-center h-10 w-10 rounded-full bg-orange-50 text-orange-600 dark:bg-orange-900/20">
+<span class="material-symbols-outlined">local_gas_station</span>
+</div>
+<h3 class="text-text-light dark:text-text-dark text-xs font-bold">주유 기록</h3>
+</div>
+<div class="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-border-light dark:border-border-dark bg-white dark:bg-surface-dark p-4 text-center shadow-sm">
+<div class="flex items-center justify-center h-10 w-10 rounded-full bg-green-50 text-green-600 dark:bg-green-900/20">
+<span class="material-symbols-outlined">settings</span>
+</div>
+<h3 class="text-text-light dark:text-text-dark text-xs font-bold">소모품</h3>
+</div>
+<div class="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-border-light dark:border-border-dark bg-white dark:bg-surface-dark p-4 text-center shadow-sm">
+<div class="flex items-center justify-center h-10 w-10 rounded-full bg-purple-50 text-purple-600 dark:bg-purple-900/20">
+<span class="material-symbols-outlined">receipt_long</span>
+</div>
+<h3 class="text-text-light dark:text-text-dark text-xs font-bold">지출 내역</h3>
+</div>
+<div class="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-border-light dark:border-border-dark bg-white dark:bg-surface-dark p-4 text-center shadow-sm">
+<div class="flex items-center justify-center h-10 w-10 rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20">
+<span class="material-symbols-outlined">bar_chart</span>
+</div>
+<h3 class="text-text-light dark:text-text-dark text-xs font-bold">차계부</h3>
+</div>
+<div class="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-border-light dark:border-border-dark bg-white dark:bg-surface-dark p-4 text-center shadow-sm">
+<div class="flex items-center justify-center h-10 w-10 rounded-full bg-red-50 text-red-600 dark:bg-red-900/20">
+<span class="material-symbols-outlined">verified_user</span>
+</div>
+<h3 class="text-text-light dark:text-text-dark text-xs font-bold">보험 관리</h3>
+</div>
+<div class="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-border-light dark:border-border-dark bg-white dark:bg-surface-dark p-4 text-center shadow-sm">
+<div class="flex items-center justify-center h-10 w-10 rounded-full bg-cyan-50 text-cyan-600 dark:bg-cyan-900/20">
+<span class="material-symbols-outlined">route</span>
+</div>
+<h3 class="text-text-light dark:text-text-dark text-xs font-bold">운행 일지</h3>
+</div>
+<div class="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-border-light dark:border-border-dark bg-white dark:bg-surface-dark p-4 text-center shadow-sm">
+<div class="flex items-center justify-center h-10 w-10 rounded-full bg-teal-50 text-teal-600 dark:bg-teal-900/20">
+<span class="material-symbols-outlined">local_car_wash</span>
+</div>
+<h3 class="text-text-light dark:text-text-dark text-xs font-bold">세차/기타</h3>
+</div>
+<div class="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-border-light dark:border-border-dark bg-white dark:bg-surface-dark p-4 text-center shadow-sm">
+<div class="flex items-center justify-center h-10 w-10 rounded-full bg-pink-50 text-pink-600 dark:bg-pink-900/20">
+<span class="material-symbols-outlined">groups</span>
+</div>
+<h3 class="text-text-light dark:text-text-dark text-xs font-bold">커뮤니티</h3>
+</div>
+</div>
+</main>
+<button class="fixed bottom-24 right-4 z-20 flex h-14 w-14 cursor-pointer items-center justify-center overflow-hidden rounded-full bg-primary text-white shadow-xl transition-transform active:scale-95">
+<span class="material-symbols-outlined text-3xl">add</span>
+</button>
+<nav class="fixed bottom-0 left-0 right-0 z-10 flex h-20 items-center justify-around border-t border-border-light dark:border-border-dark bg-white/90 dark:bg-surface-dark/90 backdrop-blur-md">
+<a class="flex flex-col items-center justify-center gap-1 text-primary" href="#">
+<span class="material-symbols-outlined font-variation-fill-1">home</span>
+<span class="text-[10px] font-bold">홈</span>
+</a>
+<a class="flex flex-col items-center justify-center gap-1 text-subtext-light dark:text-subtext-dark" href="#">
+<span class="material-symbols-outlined">analytics</span>
+<span class="text-[10px] font-medium">통계</span>
+</a>
+<a class="flex flex-col items-center justify-center gap-1 text-subtext-light dark:text-subtext-dark" href="#">
+<span class="material-symbols-outlined">notifications</span>
+<span class="text-[10px] font-medium">알림</span>
+</a>
+<a class="flex flex-col items-center justify-center gap-1 text-subtext-light dark:text-subtext-dark" href="#">
+<span class="material-symbols-outlined">person</span>
+<span class="text-[10px] font-medium">마이</span>
+</a>
+</nav>
+</div>
+
+</body></html>
