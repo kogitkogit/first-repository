@@ -840,7 +840,7 @@ function computeConsumableStatus({ item, currentMileage, latestOdo, latestDate }
       return { tone: "danger", message: "즉시 교체가 필요합니다." };
     }
     if (remain <= Math.max(1, Math.round(cycleMonths * 0.2))) {
-      return { tone: "warn", message: `${Math.max(0, remain)}개월 이내 교체 q권장` };
+      return { tone: "warn", message: `${Math.max(0, remain)}개월 이내 교체 권장` };
     }
     return { tone: "ok", message: `${Math.max(0, remain)}개월 여유가 있습니다.` };
   }

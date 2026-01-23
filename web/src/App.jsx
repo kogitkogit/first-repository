@@ -25,34 +25,11 @@ const BOTTOM_ROUTES = [
 ];
 const mapLegalSummary = (data) => {
   if (!data) return { insurance: null, inspection: null, tax: null };
-
-  const insurance = data.insurance
-    ? {
-        ...data.insurance,
-        expiry_date: data.insurance.expiry_date,
-      }
-    : null;
-
-  const inspection = data.inspection
-    ? {
-        inspection_date: data.inspection.inspection_date,
-        next_inspection_date: data.inspection.next_inspection_date,
-        last: data.inspection.last,
-        next: data.inspection.next,
-      }
-    : null;
-
-  const tax = data.tax
-    ? {
-        tax_due_date: data.tax.tax_due_date,
-        paid: data.tax.paid,
-        tone: data.tax.tone,
-        days_remaining: data.tax.days_remaining,
-        label: data.tax.label,
-      }
-    : null;
-
-  return { insurance, inspection, tax };
+  return {
+    insurance: data.insurance ?? null,
+    inspection: data.inspection ?? null,
+    tax: data.tax ?? null,
+  };
 };
 
 export default function App() {

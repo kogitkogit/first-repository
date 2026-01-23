@@ -41,6 +41,7 @@ def list_vehicles(db: Session = Depends(get_db), current_user: User = Depends(ge
     return db.query(Vehicle).filter(Vehicle.user_id == current_user.id).all()
 
 # 국산 제조사
+
 @router.get("/makers/domestic", response_model=List[str])
 def get_domestic_makers(db: Session = Depends(get_db)):
     makers = db.query(CarMaker).all()
@@ -63,6 +64,7 @@ def list_domestic_models(maker: str, db: Session = Depends(get_db)):
     ]
 
 # 수입 제조사
+
 @router.get("/makers/abroad", response_model=List[str])
 def get_abroad_makers(db: Session = Depends(get_db)):
     makers = db.query(CarMakerAbroad).all()

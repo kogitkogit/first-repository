@@ -7,7 +7,7 @@ from schemas.notification import NotificationUpdateSchema
 
 router = APIRouter()
 
-@router.get("")
+@router.get("/")
 def list_notifications(userId: int, vehicleId: int, db: Session = Depends(get_db)):
     return (
         db.query(Notification)
@@ -18,7 +18,7 @@ def list_notifications(userId: int, vehicleId: int, db: Session = Depends(get_db
         .all()
     )
 
-@router.put("")
+@router.put("/")
 def update_notification(payload: NotificationUpdateSchema, db: Session = Depends(get_db)):
     notif = (
         db.query(Notification)

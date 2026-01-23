@@ -9,7 +9,7 @@ from fastapi.security import OAuth2PasswordBearer
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # 1) 토큰 스킴 정의 (로그인 토큰 발급 엔드포인트 경로에 맞춰 수정)
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 # 2) 시크릿/알고리즘 설정 (config에 이미 존재하는 키 사용)
 SECRET_KEY = getattr(settings, "JWT_SECRET", None) or settings.SECRET_KEY
