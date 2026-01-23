@@ -179,6 +179,133 @@ rg -n "VITE_API_BASE_URL|api.yourdomain.com" dist -S
 
 ---
 
+## 1-1b) 무료 도메인(DuckDNS) 사용 절차 (테스트/초기 운영용)
+
+> 목표: 유료 도메인 없이 `*.duckdns.org`로 HTTPS API 도메인을 구성한다.  
+> 예시 도메인: `https://carcare-test.duckdns.org/api`
+
+### 1-1b-1. DuckDNS 도메인 생성
+
+1) https://www.duckdns.org 접속 후 로그인  
+2) 원하는 서브도메인 생성 (예: `carcare-test`)
+3) DuckDNS 대시보드에서 **Token**을 확인
+
+### 1-1b-2. 도메인에 서버 IP 연결
+
+DuckDNS 페이지의 `Domains` 항목에서 현재 서버 IP가 등록되어 있는지 확인합니다.
+
+#### 확인 방법
+
+- DuckDNS 대시보드에서 IP가 보이는지 확인
+- 서버에서 DNS 확인
+
+```bash
+nslookup carcare-test.duckdns.org
+```
+
+### 1-1b-3. Let’s Encrypt 인증서 발급 (DuckDNS용)
+
+DuckDNS 권장 방식은 **DNS 챌린지 + 인증서 자동 갱신**입니다.
+
+1) 필요한 도구 설치
+
+```bash
+sudo apt update
+sudo apt install certbot
+```
+
+2) DuckDNS 인증 스크립트 준비
+
+```bash
+mkdir -p /opt/duckdns
+sudo nano /opt/duckdns/duck.sh
+```
+
+3) 아래 내용을 입력 (TOKEN/DOMAIN 교체)
+
+```bash
+#!/bin/bash
+echo url="https://www.duckdns.org/update?domains=carcare-test&token=YOUR_TOKEN&ip=" | curl -k -o /opt/duckdns/duck.log -K -
+```
+
+4) 실행 권한 부여 및 동작 확인
+
+```bash
+sudo chmod 700 /opt/duckdns/duck.sh
+/opt/duckdns/duck.sh
+```
+
+5) DNS 챌린지 인증서 발급
+
+```bash
+sudo certbot certonly --manual \
+  --preferred-challenges dns \
+  --email you@example.com \
+  --server https://acme-v02.api.letsencrypt.org/directory \
+  --agree-tos \
+  -d carcare-test.duckdns.org
+```
+
+> 인증 과정에서 TXT 레코드 값을 안내받으면 DuckDNS 대시보드에 수동으로 등록해야 합니다.
+
+#### 확인 방법
+
+- 인증서 목록 확인
+
+```bash
+sudo certbot certificates
+```
+
+- TXT 레코드 확인
+
+```bash
+nslookup -type=TXT _acme-challenge.carcare-test.duckdns.org
+```
+
+### 1-1b-4. Nginx에 DuckDNS 인증서 연결
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name carcare-test.duckdns.org;
+
+    ssl_certificate /etc/letsencrypt/live/carcare-test.duckdns.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/carcare-test.duckdns.org/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+#### 확인 방법
+
+```bash
+sudo nginx -t
+sudo systemctl restart nginx
+curl -I https://carcare-test.duckdns.org/api
+```
+
+### 1-1b-5. 앱 환경변수 반영
+
+```env
+VITE_API_BASE_URL=https://carcare-test.duckdns.org/api
+```
+
+#### 확인 방법
+
+```bash
+cd web
+npm run build
+rg -n "duckdns.org" dist -S
+```
+
+---
+
 ### 1-2. Capacitor 설정 확인
 
 `web/capacitor.config.json`
