@@ -3,8 +3,10 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 from api import auth, vehicles, maintenance, consumables, expenses, fuel, notifications, ai_dashboard, odometer, tires, legal
+from db.session import engine
 
 IMAGES_DIR = Path(__file__).resolve().parent / "images"
 IMAGES_DIR.mkdir(parents=True, exist_ok=True)
@@ -32,5 +34,13 @@ app.include_router(legal.router, prefix="/api/legal", tags=["legal"])
 app.include_router(ai_dashboard.router, prefix="/api/ai_dashboard", tags=["ai_dashboard"])
 app.include_router(odometer.router, prefix="/api/odometer", tags=["odometer"])
 app.include_router(tires.router, prefix="/api")
+
+
+@app.get("/api/health")
+def health_check():
+    with engine.connect() as conn:
+        conn.execute(text("SELECT 1"))
+    return {"ok": True}
+
 
 app.mount("/images", StaticFiles(directory=str(IMAGES_DIR)), name="images")
