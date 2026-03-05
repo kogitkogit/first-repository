@@ -1,29 +1,54 @@
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from db.session import get_db
-from models.legalinfo import LegalInfo
-from typing import List, Optional
 
+from core.auth import get_current_user
+from core.ownership import ensure_vehicle_owned
+from db.session import get_db
+from models.User import User
+from models.legalinfo import LegalInfo
 from schemas.legalinfo import (
     LegalInfoCreate,
-    LegalInfoUpdate,
     LegalInfoResponse,
-    LegalSummaryResponse,
+    LegalInfoUpdate,
     LegalSummaryItem,
+    LegalSummaryResponse,
 )
 
 router = APIRouter(tags=["legal"])
 
 
 @router.get("/list", response_model=List[LegalInfoResponse])
-def list_legal(vehicleId: int, db: Session = Depends(get_db)):
-    records = db.query(LegalInfo).filter(LegalInfo.vehicle_id == vehicleId).all()
+def list_legal(
+    vehicleId: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    vehicle = ensure_vehicle_owned(vehicleId, current_user, db)
+    records = (
+        db.query(LegalInfo)
+        .filter(
+            LegalInfo.vehicle_id == vehicle.id,
+            LegalInfo.user_id == current_user.id,
+        )
+        .all()
+    )
     return records
 
 
 @router.post("/add", response_model=LegalInfoResponse)
-def add_legal(info: LegalInfoCreate, db: Session = Depends(get_db)):
-    new_record = LegalInfo(**info.dict())
+def add_legal(
+    info: LegalInfoCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    vehicle = ensure_vehicle_owned(info.vehicle_id, current_user, db)
+    payload = info.dict()
+    payload["user_id"] = current_user.id
+    payload["vehicle_id"] = vehicle.id
+
+    new_record = LegalInfo(**payload)
     db.add(new_record)
     db.commit()
     db.refresh(new_record)
@@ -31,20 +56,45 @@ def add_legal(info: LegalInfoCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/update/{id}", response_model=LegalInfoResponse)
-def update_legal(id: int, info: LegalInfoUpdate, db: Session = Depends(get_db)):
-    record = db.query(LegalInfo).filter(LegalInfo.id == id).first()
+def update_legal(
+    id: int,
+    info: LegalInfoUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    record = (
+        db.query(LegalInfo)
+        .filter(LegalInfo.id == id, LegalInfo.user_id == current_user.id)
+        .first()
+    )
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")
-    for key, value in info.dict(exclude_unset=True).items():
+
+    vehicle = ensure_vehicle_owned(info.vehicle_id, current_user, db)
+    updates = info.dict(exclude_unset=True)
+    updates.pop("id", None)
+    updates.pop("user_id", None)
+    updates["vehicle_id"] = vehicle.id
+    for key, value in updates.items():
         setattr(record, key, value)
+    record.user_id = current_user.id
+
     db.commit()
     db.refresh(record)
     return record
 
 
 @router.delete("/delete/{id}")
-def delete_legal(id: int, db: Session = Depends(get_db)):
-    record = db.query(LegalInfo).filter(LegalInfo.id == id).first()
+def delete_legal(
+    id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    record = (
+        db.query(LegalInfo)
+        .filter(LegalInfo.id == id, LegalInfo.user_id == current_user.id)
+        .first()
+    )
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")
     db.delete(record)
@@ -69,8 +119,20 @@ def _latest(record_getter, key):
 
 
 @router.get("/summary", response_model=LegalSummaryResponse)
-def legal_summary(vehicleId: int, db: Session = Depends(get_db)):
-    records = db.query(LegalInfo).filter(LegalInfo.vehicle_id == vehicleId).all()
+def legal_summary(
+    vehicleId: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    vehicle = ensure_vehicle_owned(vehicleId, current_user, db)
+    records = (
+        db.query(LegalInfo)
+        .filter(
+            LegalInfo.vehicle_id == vehicle.id,
+            LegalInfo.user_id == current_user.id,
+        )
+        .all()
+    )
     if not records:
         return LegalSummaryResponse()
 

@@ -11,4 +11,23 @@ jobs:
     steps:
       - name: Ping health endpoint
         run: |
-          curl -fsS --max-time 20 https://carcare-project.onrender.com/api/health
+          set -e
+          HEALTH_URL="https://carcare-project.onrender.com/api/health"
+          FALLBACK_URL="https://carcare-project.onrender.com/docs"
+
+          # 1) Prefer real health check (includes DB reachability).
+          if curl --fail --silent --show-error \
+            --retry 4 --retry-all-errors --retry-delay 5 \
+            --connect-timeout 20 --max-time 120 \
+            "$HEALTH_URL"; then
+            echo "Health check succeeded."
+            exit 0
+          fi
+
+          # 2) Fallback to docs ping so keepalive still prevents sleeping.
+          echo "Health check timed out/failed, falling back to docs ping..."
+          curl --fail --silent --show-error \
+            --retry 2 --retry-all-errors --retry-delay 3 \
+            --connect-timeout 20 --max-time 60 \
+            "$FALLBACK_URL"
+          echo "Fallback ping succeeded."
