@@ -5,6 +5,8 @@ export default function SettingsPanel({ userId, vehicle }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [notifications, setNotifications] = useState({ oil: false, filter: false, consumable: false });
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!userId || !vehicle) return;
@@ -123,9 +125,50 @@ export default function SettingsPanel({ userId, vehicle }) {
       <section className="rounded-2xl border border-border-light bg-surface-light p-5 shadow-card">
         <h3 className="text-lg font-semibold text-text-light">앱 정보</h3>
         <div className="mt-3 space-y-1 text-sm text-subtext-light">
-          <p>버전: 1.0.0</p>
-          <p>고객센터: 010-1234-5678</p>
-          <p>이메일: support@carcare.com</p>
+          <p>버전: 1.1.0</p>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-red-200 bg-red-50 p-5 shadow-card">
+        <h3 className="text-lg font-semibold text-red-700">회원 탈퇴</h3>
+        <p className="mt-2 text-sm text-red-600">
+          회원 탈퇴 시 계정과 차량/기록 데이터가 삭제되며 복구할 수 없습니다.
+        </p>
+        <div className="mt-3 space-y-3">
+          <input
+            type="password"
+            value={deletePassword}
+            onChange={(e) => setDeletePassword(e.target.value)}
+            placeholder="현재 비밀번호를 입력하세요"
+            className="h-11 w-full rounded-xl border border-red-200 bg-white px-3 text-sm text-text-light focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-300/60"
+          />
+          <button
+            type="button"
+            disabled={deleting || !deletePassword}
+            className="flex h-11 w-full items-center justify-center rounded-xl bg-red-600 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-300"
+            onClick={async () => {
+              if (!deletePassword) return;
+              const ok = window.confirm("정말 탈퇴하시겠습니까? 이 작업은 되돌릴 수 없습니다.");
+              if (!ok) return;
+              try {
+                setDeleting(true);
+                await api.post("/auth/delete-account", { current_password: deletePassword });
+                localStorage.removeItem("access_token");
+                localStorage.removeItem("user_id");
+                localStorage.removeItem("username");
+                localStorage.removeItem("remembered_password");
+                alert("회원 탈퇴가 완료되었습니다.");
+                window.location.reload();
+              } catch (err) {
+                console.error(err);
+                alert("회원 탈퇴에 실패했습니다. 비밀번호를 확인해주세요.");
+              } finally {
+                setDeleting(false);
+              }
+            }}
+          >
+            {deleting ? "처리 중..." : "회원 탈퇴"}
+          </button>
         </div>
       </section>
     </div>

@@ -11,6 +11,7 @@ const LoginScreen = ({ onLoginSuccess }) => {
   const [showRegister, setShowRegister] = useState(false);
   const [showReset, setShowReset] = useState(false);
   const [resetUserId, setResetUserId] = useState("");
+  const [resetCurrentPassword, setResetCurrentPassword] = useState("");
   const [resetPassword, setResetPassword] = useState("");
   const [resetConfirm, setResetConfirm] = useState("");
   const [resetError, setResetError] = useState("");
@@ -72,6 +73,10 @@ const LoginScreen = ({ onLoginSuccess }) => {
       setResetError("아이디를 입력해주세요.");
       return;
     }
+    if (!resetCurrentPassword) {
+      setResetError("현재 비밀번호를 입력해주세요.");
+      return;
+    }
     if (!resetPassword || !resetConfirm) {
       setResetError("새 비밀번호를 입력해주세요.");
       return;
@@ -82,13 +87,18 @@ const LoginScreen = ({ onLoginSuccess }) => {
     }
     try {
       setResetError("");
-      await api.post("/auth/reset", { username: resetUserId.trim(), new_password: resetPassword });
+      await api.post("/auth/reset", {
+        username: resetUserId.trim(),
+        current_password: resetCurrentPassword,
+        new_password: resetPassword,
+      });
       setResetDone(true);
       setUsername(resetUserId.trim());
       setPassword("");
       setTimeout(() => {
         setShowReset(false);
         setResetUserId("");
+        setResetCurrentPassword("");
         setResetPassword("");
         setResetConfirm("");
         setResetError("");
@@ -96,7 +106,7 @@ const LoginScreen = ({ onLoginSuccess }) => {
       }, 800);
     } catch (err) {
       console.error("비밀번호 재설정 실패:", err);
-      setResetError("비밀번호 재설정에 실패했습니다. 아이디를 확인해주세요.");
+      setResetError("비밀번호 재설정에 실패했습니다. 아이디/현재 비밀번호를 확인해주세요.");
     }
   };
 
@@ -198,6 +208,7 @@ const LoginScreen = ({ onLoginSuccess }) => {
                 onClick={() => {
                   setShowReset(false);
                   setResetUserId("");
+                  setResetCurrentPassword("");
                   setResetPassword("");
                   setResetConfirm("");
                   setResetError("");
@@ -221,6 +232,20 @@ const LoginScreen = ({ onLoginSuccess }) => {
                     if (resetDone) setResetDone(false);
                   }}
                   placeholder="아이디 또는 이메일을 입력하세요"
+                  className="h-12 rounded-lg border border-border-light bg-surface-light px-4 text-base focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+              </label>
+              <label className="flex flex-col gap-2 text-sm">
+                <span className="font-medium text-text-light">현재 비밀번호</span>
+                <input
+                  type="password"
+                  value={resetCurrentPassword}
+                  onChange={(e) => {
+                    setResetCurrentPassword(e.target.value);
+                    if (resetError) setResetError("");
+                    if (resetDone) setResetDone(false);
+                  }}
+                  placeholder="현재 비밀번호를 입력하세요"
                   className="h-12 rounded-lg border border-border-light bg-surface-light px-4 text-base focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
                 />
               </label>
@@ -265,6 +290,7 @@ const LoginScreen = ({ onLoginSuccess }) => {
                   onClick={() => {
                     setShowReset(false);
                     setResetUserId("");
+                    setResetCurrentPassword("");
                     setResetPassword("");
                     setResetConfirm("");
                     setResetError("");
