@@ -6,6 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from api import auth, vehicles, maintenance, consumables, expenses, fuel, notifications, ai_dashboard, odometer, tires, legal
+from core.config import settings
 from db.session import engine
 
 IMAGES_DIR = Path(__file__).resolve().parent / "images"
@@ -13,11 +14,9 @@ IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI()
 
-origins = ["*"]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
