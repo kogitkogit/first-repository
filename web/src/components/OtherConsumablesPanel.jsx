@@ -1,5 +1,7 @@
+
 ﻿import React, { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { useToast } from "./ui/ToastProvider";
 
 const CATEGORY = "소모품";
 
@@ -31,6 +33,8 @@ const formatYmd = (value) => {
   if (!isYmd(value)) return "-";
   return value.replace(/-/g, ". ");
 };
+
+const MISSING_STATUS_MESSAGE = "교체 정보를 입력해주세요.";
 
 const computeDistanceStatus = ({ currentMileage, lastOdo, cycleKm }) => {
   if (cycleKm == null) {
@@ -179,7 +183,7 @@ function ItemCard({ item, state, onOpenDetail, onDelete, currentMileage, alertsE
           <div className="flex items-start justify-between gap-3">
             <div className="space-y-1">
               <h3 className="text-base font-semibold text-text-light">{state.kind}</h3>
-              <p className={`text-xs font-semibold ${toneTextClass(statusData.tone)}`}>{statusData.message}</p>
+              <p className={`text-xs font-semibold ${toneTextClass(statusData.tone)}`}>{statusData.tone === "muted" ? MISSING_STATUS_MESSAGE : statusData.message}</p>
             </div>
             <div className="flex items-center gap-2">
               <span className={`rounded-full bg-border-light/70 px-2 py-0.5 text-[11px] font-semibold ${toneTextClass(statusData.tone)}`}>
@@ -472,6 +476,7 @@ function HistoryModal({ open, onClose, title, rows, onDeleteSelected, onUpdateRo
 
 export default function OtherConsumablesPanel({ currentMileage, vehicleId, apiClient, onBack, hideLocalBack, userId }) {
   const location = useLocation();
+  const { showToast } = useToast();
   const [items, setItems] = useState(() =>
     BASE_ITEMS.map((it) => ({
       key: it.key,
@@ -499,6 +504,7 @@ export default function OtherConsumablesPanel({ currentMileage, vehicleId, apiCl
   const [detailModal, setDetailModal] = useState({ open: false, itemKey: null });
   const activeItem = useMemo(() => items.find((it) => it.key === detailModal.itemKey), [items, detailModal.itemKey]);
   const [alertsEnabled, setAlertsEnabled] = useState(false);
+  const [editModal, setEditModal] = useState({ open: false, row: null, cost: "", memo: "" });
 
   useEffect(() => {
     if (location.pathname !== "/other") return;
@@ -592,7 +598,7 @@ export default function OtherConsumablesPanel({ currentMileage, vehicleId, apiCl
 
   const removeItem = async (key, id) => {
     if (!id) {
-      alert("서버 id가 없어 로컬에서만 삭제됩니다.");
+      showToast({ tone: "error", message: "항목 ID가 없어 삭제할 수 없습니다." });
       setItems((prev) => prev.filter((it) => it.key !== key));
       return;
     }
@@ -601,7 +607,7 @@ export default function OtherConsumablesPanel({ currentMileage, vehicleId, apiCl
       setItems((prev) => prev.filter((it) => it.id !== id));
     } catch (e) {
       console.error("삭제 실패:", e);
-      alert("삭제에 실패했습니다.");
+      showToast({ tone: "error", message: "삭제에 실패했습니다." });
     }
   };
 
@@ -881,13 +887,21 @@ export default function OtherConsumablesPanel({ currentMileage, vehicleId, apiCl
   };
 
   const updateRow = async (row) => {
-    const newCost = prompt("비용(원)을 수정하세요", row.cost ?? "");
-    const newMemo = prompt("메모를 수정하세요", row.memo ?? "");
-    const body = {};
-    if (newCost !== null) body.cost = toIntOrNull(newCost);
-    if (newMemo !== null) body.memo = newMemo;
-    if (Object.keys(body).length === 0) return;
-    await request("put", `${apiPrefix}/consumables/${row.id}`, body);
+    setEditModal({
+      open: true,
+      row,
+      cost: row.cost != null ? String(row.cost) : "",
+      memo: row.memo ?? "",
+    });
+  };
+
+  const saveEditedRow = async () => {
+    if (!editModal.row) return;
+    const body = {
+      cost: toIntOrNull(editModal.cost),
+      memo: editModal.memo || "",
+    };
+    await request("put", `${apiPrefix}/consumables/${editModal.row.id}`, body);
     if (historyModal.scope === "single" && historyModal.itemKey) {
       const rows = await fetchItemHistory(historyModal.itemKey);
       setHistoryModal((p) => ({ ...p, rows }));
@@ -895,6 +909,8 @@ export default function OtherConsumablesPanel({ currentMileage, vehicleId, apiCl
       const rows = await fetchAllHistory();
       setHistoryModal((p) => ({ ...p, rows }));
     }
+    setEditModal({ open: false, row: null, cost: "", memo: "" });
+    showToast({ tone: "success", message: "이력을 수정했습니다." });
   };
 
   const addItem = async () => {
@@ -915,7 +931,7 @@ export default function OtherConsumablesPanel({ currentMileage, vehicleId, apiCl
       setItems((prev) => [...prev, { ...created, key: created.kind, editingName: true, history: [], flash: null }]);
     } catch (e) {
       console.error("항목 추가 실패:", e);
-      alert("항목 추가에 실패했습니다.");
+      showToast({ tone: "error", message: "항목 추가에 실패했습니다." });
     }
   };
 
@@ -984,7 +1000,7 @@ export default function OtherConsumablesPanel({ currentMileage, vehicleId, apiCl
               onClick={async () => {
                 try {
                   await request("post", `${apiPrefix}/consumables/items/reset?vehicleId=${vehicleId}&category=${encodeURIComponent(CATEGORY)}`);
-                  alert("기본 항목으로 초기화되었습니다.");
+                  showToast({ tone: "success", message: "기본 항목으로 초기화되었습니다." });
                   const data = await request("get", `${apiPrefix}/consumables/items?vehicleId=${vehicleId}&category=${encodeURIComponent(CATEGORY)}`);
                   setItems(
                     data.map((r) => ({
@@ -1004,7 +1020,7 @@ export default function OtherConsumablesPanel({ currentMileage, vehicleId, apiCl
                   );
                 } catch (e) {
                   console.error("리셋 실패:", e);
-                  alert("리셋 실패");
+                  showToast({ tone: "error", message: "초기화에 실패했습니다." });
                 }
               }}
               className="flex flex-1 min-w-[140px] items-center justify-center gap-2 rounded-full border border-border-light bg-surface-light px-4 py-2 text-sm font-semibold text-subtext-light transition hover:border-primary hover:text-primary"
@@ -1048,6 +1064,46 @@ export default function OtherConsumablesPanel({ currentMileage, vehicleId, apiCl
         sort={allSort}
         onChangeSort={setAllSort}
       />
+
+      <EditRowModal
+        open={editModal.open}
+        cost={editModal.cost}
+        memo={editModal.memo}
+        onClose={() => setEditModal({ open: false, row: null, cost: "", memo: "" })}
+        onChangeCost={(value) => setEditModal((prev) => ({ ...prev, cost: value }))}
+        onChangeMemo={(value) => setEditModal((prev) => ({ ...prev, memo: value }))}
+        onSave={saveEditedRow}
+      />
+    </div>
+  );
+}
+
+function EditRowModal({ open, cost, memo, onClose, onChangeCost, onChangeMemo, onSave }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-bold text-text-light">이력 수정</h3>
+          <button type="button" className="text-subtext-light transition hover:text-text-light" onClick={onClose}>
+            <span className="material-symbols-outlined text-xl">close</span>
+          </button>
+        </div>
+        <div className="mt-4 space-y-3">
+          <label className="flex flex-col gap-2 text-sm">
+            <span className="text-xs font-semibold text-subtext-light">비용 (원)</span>
+            <input type="number" value={cost} onChange={(e) => onChangeCost(e.target.value)} className="h-11 rounded-xl border border-border-light bg-background-light px-3 text-sm text-text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30" />
+          </label>
+          <label className="flex flex-col gap-2 text-sm">
+            <span className="text-xs font-semibold text-subtext-light">메모</span>
+            <input type="text" value={memo} onChange={(e) => onChangeMemo(e.target.value)} className="h-11 rounded-xl border border-border-light bg-background-light px-3 text-sm text-text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30" />
+          </label>
+        </div>
+        <div className="mt-4 flex gap-2">
+          <button type="button" onClick={onClose} className="flex-1 rounded-full border border-border-light px-4 py-2 text-sm font-semibold text-subtext-light transition hover:text-primary">취소</button>
+          <button type="button" onClick={onSave} className="flex-1 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary/90">저장</button>
+        </div>
+      </div>
     </div>
   );
 }

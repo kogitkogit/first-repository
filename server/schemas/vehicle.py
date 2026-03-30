@@ -6,6 +6,7 @@ class VehicleCreate(BaseModel):
     plate_no: str
     maker: Optional[str] = None
     makerType: Optional[str] = None
+    fuelType: Optional[str] = None
     model: Optional[str] = None
     year: Optional[int] = None
     odo_km: Optional[int] = 0
@@ -19,6 +20,7 @@ class VehicleOut(ORMBase):
     maker: str | None = None
     model: str | None = None
     makerType: Optional[str] = None
+    fuelType: Optional[str] = None
     year: int | None = None
     odo_km: int | None = 0
     insurance_exp: None | str = None

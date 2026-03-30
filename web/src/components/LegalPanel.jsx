@@ -1,6 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import api from "../api/client";
 import PanelTabs from "./PanelTabs";
+import ConfirmDialog from "./ui/ConfirmDialog";
 
 const DEFAULT_FORM = {
   insurance_company: "",
@@ -86,6 +87,7 @@ export default function LegalPanel({ vehicle }) {
   const [lastSavedSection, setLastSavedSection] = useState(null);
   const [records, setRecords] = useState([]);
   const [activeRecordId, setActiveRecordId] = useState(null);
+  const [pendingDeleteRecordId, setPendingDeleteRecordId] = useState(null);
   const activeRecordIdRef = useRef(null);
 
   const loadRecords = async (focusId) => {
@@ -179,11 +181,10 @@ export default function LegalPanel({ vehicle }) {
 
   const handleDeleteRecord = async (recordId) => {
     if (!recordId) return;
-    const ok = window.confirm("이 기록을 삭제하시겠습니까?");
-    if (!ok) return;
     try {
       setLoading(true);
       await api.delete(`/legal/delete/${recordId}`);
+      setPendingDeleteRecordId(null);
       setMessageTone("success");
       setMessage("저장된 기록이 삭제되었습니다.");
       setLastSavedSection("records");
@@ -416,7 +417,7 @@ export default function LegalPanel({ vehicle }) {
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleDeleteRecord(activeRecordId)}
+                      onClick={() => setPendingDeleteRecordId(activeRecordId)}
                       disabled={!activeRecordId || loading}
                       className="flex h-8 w-8 items-center justify-center rounded-full border border-red-200 text-red-600 transition hover:bg-red-50 disabled:opacity-50"
                       aria-label="선택 기록 삭제"
@@ -462,7 +463,15 @@ export default function LegalPanel({ vehicle }) {
           </>
         )}
       </div>
-
+      <ConfirmDialog
+        open={Boolean(pendingDeleteRecordId)}
+        title="법적 정보 기록 삭제"
+        description="선택한 법적 정보 기록을 삭제합니다. 삭제 후 복구할 수 없습니다."
+        confirmLabel="삭제"
+        onConfirm={() => handleDeleteRecord(pendingDeleteRecordId)}
+        onCancel={() => setPendingDeleteRecordId(null)}
+        loading={loading}
+      />
     </div>
   );
 }

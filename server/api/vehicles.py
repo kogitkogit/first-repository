@@ -25,6 +25,7 @@ def add_vehicle(
         plate_no=vehicle.plate_no,
         maker=vehicle.maker,
         makerType=vehicle.makerType,
+        fuelType=vehicle.fuelType,
         model=vehicle.model,
         year=vehicle.year,
         odo_km=vehicle.odo_km,

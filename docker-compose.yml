@@ -6,20 +6,19 @@ services:
       POSTGRES_DB: carcare
       POSTGRES_USER: carcare
       POSTGRES_PASSWORD: carcare
+    ports: ["5433:5432"]
     volumes: [dbdata:/var/lib/postgresql/data]
   api:
     build: ./server
     env_file: ./server/.env
     depends_on: [db]
+    ports: ["8000:8000"]
     command: sh -c "pip install -r /app/requirements.txt && uvicorn app:app --host 0.0.0.0 --port 8000"
     volumes:
       - ./server:/app
   caddy:
     image: caddy:2
     depends_on: [api]
-    dns:
-      - 1.1.1.1
-      - 8.8.8.8
     ports:
       - "80:80"
       - "443:443"

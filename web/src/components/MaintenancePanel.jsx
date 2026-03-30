@@ -1,8 +1,8 @@
-﻿import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../api/client";
-import PanelTabs from "./PanelTabs";
+import ConfirmDialog from "./ui/ConfirmDialog";
+import { useToast } from "./ui/ToastProvider";
 
-// --- Constants ---
 const SERVICE_FILTERS = [
   { key: "all", label: "전체" },
   { key: "scheduled", label: "정기 정비" },
@@ -17,26 +17,28 @@ const RANGE_FILTERS = [
   { key: "all", label: "전체", months: null },
 ];
 
-const SUMMARY_RANGE_OPTIONS = [
-  { key: "week", label: "주간", days: 7 },
-  { key: "month", label: "월간", days: 30 },
-  { key: "year", label: "연간", days: 365 },
-];
-
 const SORT_OPTIONS = [
   { key: "recent", label: "최신순" },
-  { key: "oldest", label: "오래된순" },
-  { key: "cost-desc", label: "비용 높은순" },
-  { key: "cost-asc", label: "비용 낮은순" },
+  { key: "oldest", label: "오래된 순" },
+  { key: "cost-desc", label: "비용 높은 순" },
+  { key: "cost-asc", label: "비용 낮은 순" },
+];
+
+const PRESET_SERVICES = [
+  { title: "엔진오일 교체", service_type: "scheduled" },
+  { title: "브레이크 패드 교체", service_type: "scheduled" },
+  { title: "타이어 교체", service_type: "scheduled" },
+  { title: "배터리 교체", service_type: "unscheduled" },
+  { title: "냉각수 보충", service_type: "unscheduled" },
 ];
 
 const INPUT_CLASS =
-  "block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100";
+  "block w-full rounded-xl border border-border-light bg-background-light px-3 py-2 text-sm text-text-light placeholder:text-subtext-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30";
 const TEXTAREA_CLASS = `${INPUT_CLASS} min-h-[96px]`;
 const PRIMARY_BUTTON =
-  "inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-blue-700 disabled:opacity-60";
+  "inline-flex w-full items-center justify-center rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-primary/90 disabled:opacity-60";
 const SECONDARY_BUTTON =
-  "inline-flex w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60";
+  "inline-flex w-full items-center justify-center rounded-xl border border-border-light bg-white px-4 py-2 text-sm font-semibold text-subtext-light transition hover:bg-background-light disabled:opacity-60";
 
 const defaultForm = (vehicle) => ({
   service_date: new Date().toISOString().slice(0, 10),
@@ -48,29 +50,129 @@ const defaultForm = (vehicle) => ({
   notes: "",
 });
 
-// --- Main Component ---
+function resolveRange(rangeKey) {
+  const target = RANGE_FILTERS.find((item) => item.key === rangeKey);
+  if (!target || !target.months) return null;
+  const end = new Date();
+  const start = new Date();
+  start.setMonth(start.getMonth() - target.months);
+  return { fromDate: start.toISOString().slice(0, 10), toDate: end.toISOString().slice(0, 10) };
+}
+
+function formatCurrency(value) {
+  if (value == null) return "-";
+  const num = Number(value);
+  if (!Number.isFinite(num)) return String(value);
+  return `${num.toLocaleString()}원`;
+}
+
+function compareCost(cost, average) {
+  if (cost == null || !Number.isFinite(Number(cost)) || !Number.isFinite(Number(average))) return "-";
+  const diff = Number(cost) - Number(average);
+  if (diff === 0) return "평균과 동일";
+  return diff > 0 ? `평균보다 ${Math.abs(diff).toLocaleString()}원 높음` : `평균보다 ${Math.abs(diff).toLocaleString()}원 낮음`;
+}
+
+function SummaryCard({ title, value, caption }) {
+  return (
+    <div className="rounded-2xl border border-border-light bg-white p-4 shadow-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-subtext-light">{title}</p>
+      <p className="mt-2 text-xl font-bold text-text-light">{value}</p>
+      {caption ? <p className="mt-1 text-[10px] text-subtext-light">{caption}</p> : null}
+    </div>
+  );
+}
+
+function Badge({ children, variant = "primary" }) {
+  const classes =
+    variant === "primary"
+      ? "rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary"
+      : "rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700";
+  return <span className={classes}>{children}</span>;
+}
+
+function RecordCard({ record, onClick }) {
+  const cost = Number(record.cost || 0);
+  return (
+    <button type="button" className="w-full rounded-2xl border border-border-light bg-surface-light p-4 text-left shadow-sm transition hover:border-primary/40" onClick={onClick}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs text-subtext-light">{record.service_date}</p>
+          <p className="mt-1 text-base font-semibold text-text-light">{record.title}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-subtext-light">
+            <Badge variant={record.service_type === "scheduled" ? "primary" : "neutral"}>{record.service_type === "scheduled" ? "정기" : "비정기"}</Badge>
+            {record.shop_name ? <span>{record.shop_name}</span> : null}
+            {record.odometer_km != null ? <span>{Number(record.odometer_km).toLocaleString()}km</span> : null}
+          </div>
+        </div>
+        <span className="text-base font-bold text-primary">{cost ? `${cost.toLocaleString()}원` : "-"}</span>
+      </div>
+      {record.notes ? <p className="mt-2 line-clamp-2 text-sm text-subtext-light">{record.notes}</p> : null}
+    </button>
+  );
+}
+
+function InfoRow({ label, value }) {
+  return (
+    <div className="space-y-1">
+      <p className="text-[11px] uppercase tracking-wide text-subtext-light">{label}</p>
+      <p className="text-sm font-semibold text-text-light">{value}</p>
+    </div>
+  );
+}
+
+function Modal({ title, onClose, children, actions }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-md rounded-3xl bg-surface-light p-6 shadow-xl">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-text-light">{title}</h2>
+          <button className="text-subtext-light" onClick={onClose} aria-label="닫기">
+            <span className="material-symbols-outlined text-2xl">close</span>
+          </button>
+        </div>
+        <div className="mt-4 space-y-3">{children}</div>
+        <div className="mt-6">{actions}</div>
+      </div>
+    </div>
+  );
+}
+
+function BottomSheet({ children, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-0 sm:items-center sm:p-4">
+      <div className="h-[75vh] w-full max-w-lg rounded-t-3xl bg-surface-light p-6 shadow-xl sm:h-auto sm:rounded-3xl">
+        <div className="mb-4 flex items-center justify-between">
+          <span className="h-1.5 w-12 rounded-full bg-border-light sm:hidden" />
+          <button className="text-subtext-light" onClick={onClose} aria-label="닫기">
+            <span className="material-symbols-outlined text-2xl">close</span>
+          </button>
+        </div>
+        <div className="space-y-4 overflow-y-auto">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function MaintenancePanel({ vehicle }) {
-  const [activeTab, setActiveTab] = useState("summary");
+  const { showToast } = useToast();
+  const [overview, setOverview] = useState(null);
   const [allRecords, setAllRecords] = useState([]);
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [summaryRange, setSummaryRange] = useState("month");
-  const [summaryRecords, setSummaryRecords] = useState([]);
-
   const [serviceType, setServiceType] = useState("all");
   const [rangeFilter, setRangeFilter] = useState("3m");
   const [sortOption, setSortOption] = useState("recent");
   const [search, setSearch] = useState("");
   const [minCost, setMinCost] = useState("");
   const [maxCost, setMaxCost] = useState("");
-
   const [formModal, setFormModal] = useState({ open: false, mode: "create" });
   const [formValues, setFormValues] = useState(() => defaultForm(vehicle));
   const [detailSheet, setDetailSheet] = useState({ open: false, record: null });
+  const [pendingDelete, setPendingDelete] = useState(null);
 
-  const isSummaryTab = activeTab === "summary";
+  const totalCostMonth = useMemo(() => Number(overview?.total_cost_month ?? 0), [overview]);
 
-  // --- Logic & Handlers ---
   const applyRecordFilters = useCallback(
     (items) => {
       let list = [...items];
@@ -98,8 +200,33 @@ export default function MaintenancePanel({ vehicle }) {
       }
       return list;
     },
-    [minCost, maxCost, sortOption]
+    [minCost, maxCost, sortOption],
   );
+
+  const highlightStats = useMemo(() => {
+    if (!records.length) return null;
+    const totalCost = records.reduce((sum, item) => sum + Number(item.cost || 0), 0);
+    const averageCost = Math.round(totalCost / records.length);
+    const shopCounter = records.reduce((map, item) => {
+      if (!item.shop_name) return map;
+      map[item.shop_name] = (map[item.shop_name] || 0) + 1;
+      return map;
+    }, {});
+    const frequentShop = Object.entries(shopCounter).sort((a, b) => b[1] - a[1])[0];
+    const unscheduledCount = records.filter((item) => item.service_type === "unscheduled").length;
+    const ratio = records.length ? Math.round((unscheduledCount / records.length) * 100) : 0;
+    return { averageCost, frequentShop: frequentShop ? frequentShop[0] : null, unscheduledRatio: ratio };
+  }, [records]);
+
+  const loadOverview = useCallback(async () => {
+    if (!vehicle) return;
+    try {
+      const { data } = await api.get("/maintenance/overview", { params: { vehicleId: vehicle.id } });
+      setOverview(data);
+    } catch (error) {
+      console.error("정비 요약 정보를 불러오지 못했습니다.", error);
+    }
+  }, [vehicle]);
 
   const loadRecords = useCallback(async () => {
     if (!vehicle) return;
@@ -108,15 +235,13 @@ export default function MaintenancePanel({ vehicle }) {
       const params = { vehicleId: vehicle.id };
       if (serviceType !== "all") params.serviceType = serviceType;
       if (search.trim()) params.search = search.trim();
-
       const range = resolveRange(rangeFilter);
       if (range) {
         params.fromDate = range.fromDate;
         params.toDate = range.toDate;
       }
-
       const { data } = await api.get("/maintenance/records", { params });
-      const baseList = Array.isArray(data) ? data : [];
+      const baseList = data || [];
       setAllRecords(baseList);
       setRecords(applyRecordFilters(baseList));
     } catch (error) {
@@ -126,34 +251,29 @@ export default function MaintenancePanel({ vehicle }) {
     }
   }, [vehicle, serviceType, search, rangeFilter, applyRecordFilters]);
 
-  const fetchSummary = useCallback(async () => {
-    if (!vehicle) {
-      setSummaryRecords([]);
-      return;
-    }
-    try {
-      const params = { vehicleId: vehicle.id };
-      const period = resolveSummaryPeriod(summaryRange);
-      if (period) {
-        params.fromDate = period.fromDate;
-        params.toDate = period.toDate;
-      }
-      const { data } = await api.get("/maintenance/records", { params });
-      const list = Array.isArray(data) ? data : [];
-      list.sort((a, b) => new Date(b.service_date) - new Date(a.service_date));
-      setSummaryRecords(list);
-    } catch (error) {
-      console.error("정비 요약을 불러오는 중 오류가 발생했습니다.", error);
-      setSummaryRecords([]);
-    }
-  }, [vehicle, summaryRange]);
+  useEffect(() => {
+    if (!vehicle) return;
+    setFormValues(defaultForm(vehicle));
+  }, [vehicle]);
 
-  useEffect(() => { loadRecords(); }, [loadRecords]);
-  useEffect(() => { fetchSummary(); }, [fetchSummary]);
-  useEffect(() => { setRecords(applyRecordFilters(allRecords)); }, [allRecords, applyRecordFilters]);
+  useEffect(() => {
+    if (!vehicle) return;
+    loadOverview();
+  }, [vehicle, loadOverview]);
+
+  useEffect(() => {
+    loadRecords();
+  }, [loadRecords]);
+
+  useEffect(() => {
+    setRecords(applyRecordFilters(allRecords));
+  }, [allRecords, applyRecordFilters]);
 
   const handleFormSubmit = async () => {
-    if (!vehicle) return;
+    if (!vehicle || !formValues.title.trim() || !formValues.service_date) {
+      showToast({ tone: "warning", message: "정비 날짜와 항목 이름을 입력해주세요." });
+      return;
+    }
     setLoading(true);
     const payload = {
       service_date: formValues.service_date,
@@ -172,23 +292,42 @@ export default function MaintenancePanel({ vehicle }) {
       }
       setFormModal({ open: false, mode: "create" });
       setDetailSheet({ open: false, record: null });
-      await Promise.all([loadRecords(), fetchSummary()]);
+      await Promise.all([loadRecords(), loadOverview()]);
+      showToast({ tone: "success", message: "정비 기록을 저장했습니다." });
     } catch (error) {
-      alert("정비 기록을 저장하지 못했습니다. 입력값을 다시 확인해주세요.");
+      console.error("정비 기록 저장 오류", error);
+      showToast({ tone: "error", message: "정비 기록을 저장하지 못했습니다." });
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async (record) => {
-    if (!record || !window.confirm("이 정비 기록을 삭제하시겠습니까?")) return;
+    if (!record) return;
     try {
       await api.delete(`/maintenance/records/${record.id}`);
       setDetailSheet({ open: false, record: null });
-      await Promise.all([loadRecords(), fetchSummary()]);
+      setPendingDelete(null);
+      await Promise.all([loadRecords(), loadOverview()]);
+      showToast({ tone: "success", message: "정비 기록을 삭제했습니다." });
     } catch (error) {
-      alert("삭제에 실패했습니다. 잠시 후 다시 시도해주세요.");
+      console.error("정비 기록 삭제 오류", error);
+      showToast({ tone: "error", message: "정비 기록 삭제에 실패했습니다." });
     }
+  };
+
+  const handleDuplicate = (record) => {
+    if (!record) return;
+    setFormValues({
+      service_date: new Date().toISOString().slice(0, 10),
+      title: record.title,
+      service_type: record.service_type,
+      cost: record.cost != null ? String(record.cost) : "",
+      odometer_km: record.odometer_km != null ? String(record.odometer_km) : "",
+      shop_name: record.shop_name || "",
+      notes: record.notes || "",
+    });
+    setFormModal({ open: true, mode: "create" });
   };
 
   const handleResetFilters = () => {
@@ -200,281 +339,180 @@ export default function MaintenancePanel({ vehicle }) {
     setMaxCost("");
   };
 
-  const summaryStats = useMemo(() => {
-    if (!summaryRecords.length) return { totalCost: 0, count: 0, lastRecord: null, averageCost: 0 };
-    const totalCost = summaryRecords.reduce((sum, item) => sum + Number(item.cost || 0), 0);
-    const count = summaryRecords.length;
-    return { totalCost, count, lastRecord: summaryRecords[0], averageCost: Math.round(totalCost / count) };
-  }, [summaryRecords]);
-
-  // --- Render ---
   return (
-    <div className="pb-28">
-      <PanelTabs
-        tabs={[
-          { key: "summary", label: "요약보기", icon: "insights" },
-          { key: "details", label: "상세보기", icon: "list_alt" },
-        ]}
-        activeKey={activeTab}
-        onChange={setActiveTab}
-      />
-      <div className="px-4 pt-0 pb-3">
-        <div className="flex justify-end">
+    <div className="space-y-6 pb-28">
+      <section className="rounded-3xl border border-border-light bg-surface-light p-6 shadow-card">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-text-light">정비 이력 관리</h1>
+            <p className="mt-1 text-sm text-subtext-light">정비 이력을 빠르게 기록하고 비용 흐름을 함께 확인하세요.</p>
+          </div>
           <button
-            className="flex items-center justify-center gap-2 rounded-full bg-primary px-4 py-1.5 text-sm font-semibold text-white shadow-card transition hover:bg-primary/90"
+            type="button"
+            className="flex items-center justify-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90"
             onClick={() => {
               setFormValues(defaultForm(vehicle));
               setFormModal({ open: true, mode: "create" });
             }}
           >
             <span className="material-symbols-outlined text-base">add</span>
-            정비 이력 추가
+            정비 기록 추가
           </button>
         </div>
-      </div>
-  
-      {/* 3. 본문 영역 */}
-      <div className="space-y-6 px-4">
-      {isSummaryTab ? (
-        <div className="space-y-4">
-          <section className="rounded-2xl border border-border-light bg-surface-light p-5 shadow-card">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-700">
-                  <span className="material-symbols-outlined text-xl">build_circle</span>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-subtext-light">정비 요약</p>
-                  <h1 className="mt-1 text-xl font-bold text-text-light">{vehicle?.maker} {vehicle?.model}</h1>
-                  <p className="text-sm text-subtext-light">선택한 기간 기준으로 정비 지표를 확인하세요.</p>
-                </div>
-              </div>
-              <label className="flex items-center gap-2 text-sm text-subtext-light bg-white px-3 py-1.5 rounded-full border border-border-light shadow-sm">
-                <span className="font-semibold text-text-light">조회 기간</span>
-                <select
-                  value={summaryRange}
-                  onChange={(e) => setSummaryRange(e.target.value)}
-                  className="bg-transparent text-sm text-text-light focus:outline-none"
-                >
-                  {SUMMARY_RANGE_OPTIONS.map((opt) => (
-                    <option key={opt.key} value={opt.key}>{opt.label}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          </section>
 
-          <section className="grid grid-cols-2 gap-3">
-            <SummaryCard 
-              title={`${getSummaryRangeLabel(summaryRange)} 총 비용`} 
-              value={`${summaryStats.totalCost.toLocaleString()} 원`}
-              icon="payments"
-              color="bg-amber-100 text-amber-700"
-            />
-            <SummaryCard 
-              title="정비 건수" 
-              value={`${summaryStats.count}건`} 
-              caption="선택한 기간 기준"
-              icon="receipt_long"
-              color="bg-sky-100 text-sky-700"
-            />
-            <SummaryCard 
-              title="마지막 정비일" 
-              value={summaryStats.lastRecord?.service_date || "-"} 
-              caption={summaryStats.lastRecord?.title || "기록 없음"}
-              icon="event"
-              color="bg-emerald-100 text-emerald-700"
-            />
-            <SummaryCard 
-              title="평균 비용" 
-              value={`${summaryStats.averageCost.toLocaleString()} 원`} 
-              caption={summaryStats.count ? `${summaryStats.count}건 기준` : "기록 없음"}
-              icon="insights"
-              color="bg-indigo-100 text-indigo-700"
-            />
-          </section>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {PRESET_SERVICES.map((preset) => (
+            <button
+              key={preset.title}
+              type="button"
+              className="rounded-full border border-border-light bg-background-light px-3 py-1.5 text-xs font-semibold text-subtext-light transition hover:text-primary"
+              onClick={() => {
+                setFormValues({
+                  ...defaultForm(vehicle),
+                  title: preset.title,
+                  service_type: preset.service_type,
+                  odometer_km: vehicle?.odo_km ? String(vehicle.odo_km) : "",
+                });
+                setFormModal({ open: true, mode: "create" });
+              }}
+            >
+              {preset.title}
+            </button>
+          ))}
         </div>
-      ) : (
-        <>
-            <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex flex-wrap items-center gap-2">
-                {SERVICE_FILTERS.map((f) => (
-                  <button key={f.key} className={`rounded-full px-3 py-1 text-sm font-semibold ${serviceType === f.key ? "bg-blue-600 text-white" : "border border-slate-200 text-slate-600"}`} onClick={() => setServiceType(f.key)}>{f.label}</button>
-                ))}
-                <input className="ml-auto min-w-[160px] flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="정비 항목/정비소 검색" value={search} onChange={(e) => setSearch(e.target.value)} />
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {RANGE_FILTERS.map((f) => (
-                  <button key={f.key} className={`rounded-full px-3 py-1 text-xs font-semibold ${rangeFilter === f.key ? "bg-slate-900 text-white" : "border border-slate-200 text-slate-600"}`} onClick={() => setRangeFilter(f.key)}>{f.label}</button>
-                ))}
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <input type="number" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="최소 비용" value={minCost} onChange={(e) => setMinCost(e.target.value)} />
-                <input type="number" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="최대 비용" value={maxCost} onChange={(e) => setMaxCost(e.target.value)} />
-                <select className="rounded-xl border border-slate-200 px-3 py-2 text-sm" value={sortOption} onChange={(e) => setSortOption(e.target.value)}>
-                  {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
-                </select>
-                <button onClick={handleResetFilters} className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:text-blue-600">필터 초기화</button>
-              </div>
-            </section>
-            <section className="space-y-3">
-              {loading ? (
-                <div className="p-6 text-center text-sm text-slate-500">데이터를 불러오는 중입니다...</div>
-              ) : records.length === 0 ? (
-                <div className="p-6 text-center text-sm text-slate-500">정비 기록이 없습니다.</div>
-              ) : (
-                records.map((r) => <RecordCard key={r.id} record={r} onClick={() => setDetailSheet({ open: true, record: r })} />)
-              )}
-            </section>
-          </>
-        )}
-      </div>
 
-      {/* --- Modals --- */}
-      {formModal.open && (
-        <Modal
-          title={formModal.mode === "create" ? "정비 기록 추가" : "정비 기록 수정"}
-          onClose={() => setFormModal({ open: false, mode: "create" })}
-          actions={
-            <div className="space-y-3">
-              <button className={PRIMARY_BUTTON} disabled={loading} onClick={handleFormSubmit}>저장하기</button>
-              <button className={SECONDARY_BUTTON} onClick={() => setFormModal({ open: false, mode: "create" })}>취소</button>
-            </div>
-          }
-        >
-          <div className="space-y-3">
-            <input type="date" className={INPUT_CLASS} value={formValues.service_date} onChange={(e) => setFormValues(p => ({ ...p, service_date: e.target.value }))} />
-            <input className={INPUT_CLASS} placeholder="정비 항목" value={formValues.title} onChange={(e) => setFormValues(p => ({ ...p, title: e.target.value }))} />
-            <select className={INPUT_CLASS} value={formValues.service_type} onChange={(e) => setFormValues(p => ({ ...p, service_type: e.target.value }))}>
-              <option value="scheduled">정기 정비</option>
-              <option value="unscheduled">돌발/특별 정비</option>
+        <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <SummaryCard title="이번 달 총 비용" value={totalCostMonth ? `${totalCostMonth.toLocaleString()}원` : "0원"} />
+          <SummaryCard title="정비 건수" value={overview ? overview.total_count_month : 0} caption={overview ? `${overview.scheduled_count_month}건 정기 · ${overview.unscheduled_count_month}건 비정기` : "-"} />
+          <SummaryCard title="마지막 정비일" value={overview?.last_service_date || "-"} caption={overview?.recent?.[0]?.title || "최근 기록 없음"} />
+          <SummaryCard title="평균 정비 비용" value={highlightStats ? `${highlightStats.averageCost.toLocaleString()}원` : "-"} caption={highlightStats?.frequentShop ? `${highlightStats.frequentShop} · 비정기 비율 ${highlightStats.unscheduledRatio}%` : "분석용 데이터 부족"} />
+        </div>
+      </section>
+
+      <section className="space-y-4 rounded-2xl border border-border-light bg-surface-light p-4 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          {SERVICE_FILTERS.map((filter) => (
+            <button key={filter.key} className={`rounded-full px-3 py-1 text-sm font-semibold transition ${serviceType === filter.key ? "bg-primary text-white" : "border border-border-light text-subtext-light"}`} onClick={() => setServiceType(filter.key)}>
+              {filter.label}
+            </button>
+          ))}
+          <input className="ml-auto min-w-[160px] flex-1 rounded-xl border border-border-light bg-background-light px-3 py-2 text-sm text-text-light" placeholder="정비 항목이나 정비소 검색" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {RANGE_FILTERS.map((filter) => (
+            <button key={filter.key} className={`rounded-full px-3 py-1 text-xs font-semibold transition ${rangeFilter === filter.key ? "bg-text-light text-white" : "border border-border-light text-subtext-light"}`} onClick={() => setRangeFilter(filter.key)}>
+              {filter.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <label className="flex flex-col gap-1 text-xs text-subtext-light">
+            최소 비용 (원)
+            <input type="number" className="rounded-xl border border-border-light bg-background-light px-3 py-2 text-sm text-text-light" value={minCost} onChange={(e) => setMinCost(e.target.value)} placeholder="예: 50000" />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-subtext-light">
+            최대 비용 (원)
+            <input type="number" className="rounded-xl border border-border-light bg-background-light px-3 py-2 text-sm text-text-light" value={maxCost} onChange={(e) => setMaxCost(e.target.value)} placeholder="예: 300000" />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-subtext-light">
+            정렬 방식
+            <select className="rounded-xl border border-border-light bg-background-light px-3 py-2 text-sm text-text-light" value={sortOption} onChange={(e) => setSortOption(e.target.value)}>
+              {SORT_OPTIONS.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
             </select>
-            <input type="number" className={INPUT_CLASS} placeholder="비용 (원)" value={formValues.cost} onChange={(e) => setFormValues(p => ({ ...p, cost: e.target.value }))} />
-            <input type="number" className={INPUT_CLASS} placeholder="주행거리 (km)" value={formValues.odometer_km} onChange={(e) => setFormValues(p => ({ ...p, odometer_km: e.target.value }))} />
-            <input className={INPUT_CLASS} placeholder="정비소 이름" value={formValues.shop_name} onChange={(e) => setFormValues(p => ({ ...p, shop_name: e.target.value }))} />
-            <textarea className={TEXTAREA_CLASS} placeholder="메모" value={formValues.notes} onChange={(e) => setFormValues(p => ({ ...p, notes: e.target.value }))} />
+          </label>
+          <div className="flex items-center">
+            <button type="button" onClick={handleResetFilters} className="w-full rounded-xl border border-border-light px-3 py-2 text-sm text-subtext-light transition hover:text-primary">
+              필터 초기화
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        {loading ? (
+          <div className="rounded-2xl border border-border-light bg-surface-light px-4 py-6 text-center text-sm text-subtext-light shadow-sm">데이터를 불러오는 중입니다...</div>
+        ) : records.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-border-light bg-surface-light px-4 py-6 text-center text-sm text-subtext-light shadow-sm">조건에 맞는 정비 기록이 없습니다. 필터를 변경하거나 새 기록을 추가해보세요.</div>
+        ) : (
+          records.map((record) => <RecordCard key={record.id} record={record} onClick={() => setDetailSheet({ open: true, record })} />)
+        )}
+      </section>
+
+      {formModal.open ? (
+        <Modal title={formModal.mode === "create" ? "정비 기록 추가" : "정비 기록 수정"} onClose={() => setFormModal({ open: false, mode: "create" })} actions={<div className="space-y-3"><button className={PRIMARY_BUTTON} disabled={loading} onClick={handleFormSubmit}>저장</button><button className={SECONDARY_BUTTON} disabled={loading} onClick={() => setFormModal({ open: false, mode: "create" })}>취소</button></div>}>
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {PRESET_SERVICES.map((preset) => (
+                <button key={preset.title} type="button" className="rounded-full border border-border-light px-3 py-1.5 text-xs font-semibold text-subtext-light transition hover:text-primary" onClick={() => setFormValues((prev) => ({ ...prev, title: preset.title, service_type: preset.service_type }))}>
+                  {preset.title}
+                </button>
+              ))}
+            </div>
+            <input type="date" className={INPUT_CLASS} value={formValues.service_date} onChange={(e) => setFormValues((prev) => ({ ...prev, service_date: e.target.value }))} required />
+            <input className={INPUT_CLASS} placeholder="정비 항목" value={formValues.title} onChange={(e) => setFormValues((prev) => ({ ...prev, title: e.target.value }))} required />
+            <select className={INPUT_CLASS} value={formValues.service_type} onChange={(e) => setFormValues((prev) => ({ ...prev, service_type: e.target.value }))}>
+              <option value="scheduled">정기 정비</option>
+              <option value="unscheduled">비정기 정비</option>
+            </select>
+            <input type="number" className={INPUT_CLASS} placeholder="비용 (원)" value={formValues.cost} onChange={(e) => setFormValues((prev) => ({ ...prev, cost: e.target.value }))} />
+            <input type="number" className={INPUT_CLASS} placeholder="주행거리 (km)" value={formValues.odometer_km} onChange={(e) => setFormValues((prev) => ({ ...prev, odometer_km: e.target.value }))} />
+            <input className={INPUT_CLASS} placeholder="정비소 이름" value={formValues.shop_name} onChange={(e) => setFormValues((prev) => ({ ...prev, shop_name: e.target.value }))} />
+            <textarea className={TEXTAREA_CLASS} placeholder="메모" value={formValues.notes} onChange={(e) => setFormValues((prev) => ({ ...prev, notes: e.target.value }))} />
           </div>
         </Modal>
-      )}
+      ) : null}
 
-      {detailSheet.open && detailSheet.record && (
+      {detailSheet.open && detailSheet.record ? (
         <BottomSheet onClose={() => setDetailSheet({ open: false, record: null })}>
           <div className="space-y-4">
-            <div>
-              <p className="text-xs text-slate-500">정비 날짜 / 항목</p>
-              <p className="text-lg font-bold">{detailSheet.record.service_date}</p>
-              <p className="text-base font-semibold">{detailSheet.record.title}</p>
+            <div className="space-y-2">
+              <p className="text-xs uppercase tracking-wide text-subtext-light">정비 날짜</p>
+              <p className="text-lg font-semibold text-text-light">{detailSheet.record.service_date}</p>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs uppercase tracking-wide text-subtext-light">정비 항목</p>
+              <p className="text-base font-semibold text-text-light">{detailSheet.record.title}</p>
+              <Badge>{detailSheet.record.service_type === "scheduled" ? "정기 정비" : "비정기 정비"}</Badge>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <InfoRow label="비용" value={formatCurrency(detailSheet.record.cost)} />
-              <InfoRow label="주행거리" value={detailSheet.record.odometer_km ? `${Number(detailSheet.record.odometer_km).toLocaleString()} km` : "-"} />
+              <InfoRow label="주행거리" value={detailSheet.record.odometer_km != null ? `${Number(detailSheet.record.odometer_km).toLocaleString()}km` : "-"} />
               <InfoRow label="정비소" value={detailSheet.record.shop_name || "-"} />
+              <InfoRow label="평균 대비" value={highlightStats ? compareCost(detailSheet.record.cost, highlightStats.averageCost) : "-"} />
             </div>
-            {detailSheet.record.notes && <div className="p-3 bg-slate-50 rounded-xl text-sm whitespace-pre-line">{detailSheet.record.notes}</div>}
-            <div className="grid grid-cols-2 gap-2">
-              <button className={SECONDARY_BUTTON} onClick={() => { setFormValues({ ...detailSheet.record, cost: String(detailSheet.record.cost || ""), odometer_km: String(detailSheet.record.odometer_km || "") }); setFormModal({ open: true, mode: "edit", recordId: detailSheet.record.id }); }}>수정</button>
-              <button className="inline-flex w-full items-center justify-center rounded-xl bg-red-50 text-red-600 px-4 py-2 text-sm font-semibold" onClick={() => handleDelete(detailSheet.record)}>삭제</button>
+            {detailSheet.record.notes ? <div className="rounded-xl border border-border-light bg-background-light p-3 text-sm text-subtext-light"><p className="font-semibold text-text-light">메모</p><p className="mt-1 whitespace-pre-line">{detailSheet.record.notes}</p></div> : null}
+            <div className="space-y-2">
+              <button type="button" className="w-full rounded-xl border border-border-light px-4 py-2 text-sm font-semibold text-subtext-light transition hover:text-primary" onClick={() => handleDuplicate(detailSheet.record)}>동일 항목 다시 등록</button>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" className="rounded-xl border border-border-light px-4 py-2 text-sm font-semibold text-subtext-light transition hover:text-primary" onClick={() => {
+                  setFormValues({
+                    service_date: detailSheet.record.service_date,
+                    title: detailSheet.record.title,
+                    service_type: detailSheet.record.service_type,
+                    cost: detailSheet.record.cost != null ? String(detailSheet.record.cost) : "",
+                    odometer_km: detailSheet.record.odometer_km != null ? String(detailSheet.record.odometer_km) : "",
+                    shop_name: detailSheet.record.shop_name || "",
+                    notes: detailSheet.record.notes || "",
+                  });
+                  setFormModal({ open: true, mode: "edit", recordId: detailSheet.record.id });
+                }}>수정</button>
+                <button type="button" className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-100" onClick={() => setPendingDelete(detailSheet.record)}>삭제</button>
+              </div>
             </div>
           </div>
         </BottomSheet>
-      )}
+      ) : null}
+
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title="정비 기록 삭제"
+        description={pendingDelete ? `${pendingDelete.title} 기록을 삭제합니다. 삭제 후 복구할 수 없습니다.` : ""}
+        confirmLabel="삭제"
+        onConfirm={() => handleDelete(pendingDelete)}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
-}
-
-// --- Helper Components & Functions (Remain similar but cleaned) ---
-function SummaryCard({ title, value, caption, icon = "insights", color = "bg-primary/10 text-primary" }) {
-  return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-border-light bg-white p-4 shadow-sm">
-      <div className="flex items-center gap-2">
-        <span className={`flex h-9 w-9 items-center justify-center rounded-full ${color}`}>
-          <span className="material-symbols-outlined text-lg">{icon}</span>
-        </span>
-        <span className="text-sm font-semibold text-text-light">{title}</span>
-      </div>
-      <div>
-        <p className="text-lg font-bold text-text-light">{value}</p>
-        {caption && <p className="text-xs text-subtext-light">{caption}</p>}
-      </div>
-    </div>
-  );
-}
-
-function RecordCard({ record, onClick }) {
-  return (
-    <button className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm hover:border-blue-400" onClick={onClick}>
-      <div className="flex justify-between">
-        <div>
-          <p className="text-xs text-slate-500">{record.service_date}</p>
-          <p className="font-semibold text-slate-900">{record.title}</p>
-        </div>
-        <span className="font-bold text-blue-600">{Number(record.cost || 0).toLocaleString()} 원</span>
-      </div>
-    </button>
-  );
-}
-
-function InfoRow({ label, value }) {
-  return (
-    <div>
-      <p className="text-[11px] text-slate-500 uppercase">{label}</p>
-      <p className="text-sm font-semibold text-slate-800">{value}</p>
-    </div>
-  );
-}
-
-function Modal({ title, onClose, children, actions }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold">{title}</h2>
-          <button onClick={onClose}><span className="material-symbols-outlined">close</span></button>
-        </div>
-        {children}
-        <div className="mt-6">{actions}</div>
-      </div>
-    </div>
-  );
-}
-
-function BottomSheet({ children, onClose }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl overflow-y-auto max-h-[80vh]">
-        <div className="flex justify-end mb-2">
-          <button onClick={onClose}><span className="material-symbols-outlined">close</span></button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-// --- Utils ---
-function resolveRange(rangeKey) {
-  const target = RANGE_FILTERS.find((item) => item.key === rangeKey);
-  if (!target || !target.months) return null;
-  const end = new Date();
-  const start = new Date();
-  start.setMonth(start.getMonth() - target.months);
-  return { fromDate: start.toISOString().slice(0, 10), toDate: end.toISOString().slice(0, 10) };
-}
-
-function resolveSummaryPeriod(rangeKey) {
-  const end = new Date();
-  let start = new Date();
-  if (rangeKey === "week") start.setDate(end.getDate() - 7);
-  else if (rangeKey === "month") start.setDate(end.getDate() - 30);
-  else if (rangeKey === "year") start.setFullYear(end.getFullYear() - 1);
-  else return null;
-  return { fromDate: start.toISOString().slice(0, 10), toDate: end.toISOString().slice(0, 10) };
-}
-
-function getSummaryRangeLabel(rangeKey) {
-  return SUMMARY_RANGE_OPTIONS.find(o => o.key === rangeKey)?.label || "기간";
-}
-
-function formatCurrency(value) {
-  return value != null ? `${Number(value).toLocaleString()} 원` : "-";
 }

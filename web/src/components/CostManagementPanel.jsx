@@ -77,6 +77,19 @@ const getMonthRange = (monthStr) => {
   };
 };
 
+const getPreviousRange = (viewMode, selectedDate, selectedMonth) => {
+  if (viewMode === "week") {
+    const current = getWeekRange(selectedDate);
+    if (!current) return null;
+    return {
+      start: addDays(current.start, -7),
+      end: addDays(current.end, -7),
+    };
+  }
+  const previousMonth = shiftMonth(selectedMonth, -1);
+  return getMonthRange(previousMonth);
+};
+
 export default function CostManagementPanel({ vehicle }) {
   const today = useMemo(() => new Date(), []);
   const [viewMode, setViewMode] = useState("month");
@@ -94,6 +107,12 @@ export default function CostManagementPanel({ vehicle }) {
     consumableDetails: [],
     entries: [],
   });
+  const [previousSnapshot, setPreviousSnapshot] = useState({
+    overallTotal: 0,
+    categoryTotals: [],
+    consumableDetails: [],
+    entries: [],
+  });
 
   const range = useMemo(() => {
     if (viewMode === "week") {
@@ -101,6 +120,7 @@ export default function CostManagementPanel({ vehicle }) {
     }
     return getMonthRange(selectedMonth);
   }, [viewMode, selectedDate, selectedMonth]);
+  const previousRange = useMemo(() => getPreviousRange(viewMode, selectedDate, selectedMonth), [viewMode, selectedDate, selectedMonth]);
 
   useEffect(() => {
     if (!vehicle?.id || !range?.start || !range?.end) return;
@@ -110,17 +130,37 @@ export default function CostManagementPanel({ vehicle }) {
       setLoading(true);
       setError(null);
       try {
-        const data = await fetchCostSnapshot({
-          vehicleId: vehicle.id,
-          startDate: range.start,
-          endDate: range.end,
-        });
+        const [data, previousData] = await Promise.all([
+          fetchCostSnapshot({
+            vehicleId: vehicle.id,
+            startDate: range.start,
+            endDate: range.end,
+          }),
+          previousRange?.start && previousRange?.end
+            ? fetchCostSnapshot({
+                vehicleId: vehicle.id,
+                startDate: previousRange.start,
+                endDate: previousRange.end,
+              })
+            : Promise.resolve({
+                overallTotal: 0,
+                categoryTotals: [],
+                consumableDetails: [],
+                entries: [],
+              }),
+        ]);
         if (cancelled) return;
         setSnapshot({
           overallTotal: data.overallTotal,
           categoryTotals: data.categoryTotals,
           consumableDetails: data.consumableDetails,
           entries: data.entries,
+        });
+        setPreviousSnapshot({
+          overallTotal: previousData.overallTotal,
+          categoryTotals: previousData.categoryTotals,
+          consumableDetails: previousData.consumableDetails,
+          entries: previousData.entries,
         });
       } catch (err) {
         console.error("비용 데이터를 불러오는 중 오류", err);
@@ -134,7 +174,7 @@ export default function CostManagementPanel({ vehicle }) {
     return () => {
       cancelled = true;
     };
-  }, [vehicle?.id, range?.start, range?.end]);
+  }, [previousRange?.end, previousRange?.start, range?.end, range?.start, vehicle?.id]);
 
   const rangeLabel = useMemo(() => {
     if (!range) return "기간 선택";
@@ -149,6 +189,12 @@ export default function CostManagementPanel({ vehicle }) {
       })),
     [snapshot.categoryTotals],
   );
+  const overallDiff = snapshot.overallTotal - previousSnapshot.overallTotal;
+  const topCategory = useMemo(
+    () => [...preparedCategoryTotals].sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0))[0] || null,
+    [preparedCategoryTotals],
+  );
+  const recentEntries = snapshot.entries.slice(0, 3);
 
   if (!vehicle) {
     return (
@@ -255,6 +301,35 @@ export default function CostManagementPanel({ vehicle }) {
             {error}
           </div>
         ) : null}
+
+        <section className="grid gap-3 md:grid-cols-3">
+          <div className="rounded-2xl border border-border-light bg-surface-light p-4 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-subtext-light">이전 기간 대비</p>
+            <p className="mt-2 text-lg font-bold text-text-light">
+              {overallDiff === 0 ? "변동 없음" : `${Math.abs(overallDiff).toLocaleString()}원 ${overallDiff > 0 ? "증가" : "감소"}`}
+            </p>
+            <p className="mt-1 text-sm text-subtext-light">이전 동일 구간 총지출 {formatCurrency(previousSnapshot.overallTotal)}</p>
+          </div>
+          <div className="rounded-2xl border border-border-light bg-surface-light p-4 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-subtext-light">최대 지출 카테고리</p>
+            <p className="mt-2 text-lg font-bold text-text-light">{topCategory ? topCategory.label : "데이터 없음"}</p>
+            <p className="mt-1 text-sm text-subtext-light">{topCategory ? `${formatCurrency(topCategory.amount)} · ${topCategory.count}건` : "등록된 지출이 없습니다."}</p>
+          </div>
+          <div className="rounded-2xl border border-border-light bg-surface-light p-4 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-subtext-light">최근 지출 흐름</p>
+            {recentEntries.length ? (
+              <div className="mt-2 space-y-1 text-sm text-subtext-light">
+                {recentEntries.map((entry) => (
+                  <p key={entry.id}>
+                    {formatDisplayDate(entry.date)} · {entry.title} · {formatCurrency(entry.amount)}
+                  </p>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-subtext-light">해당 기간 지출이 없습니다.</p>
+            )}
+          </div>
+        </section>
 
         <section className="space-y-3">
           <h2 className="text-base font-semibold text-text-light">카테고리별 지출</h2>

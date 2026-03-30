@@ -1,295 +1,422 @@
-# CarCare Android 배포 체크리스트 (React + Vite + FastAPI + Supabase + Render 무료)
+﻿# 구글 플레이스토어 출시 절차 (Capacitor 기반)
 
-> 목표: 현재 구조(React/Vite + FastAPI)를 유지한 채 Android 앱을 Google Play에 배포하고, 운영 비용을 0원(무료 플랜 범위)으로 유지한다.
-> 기준일: 2026-03-04
-
----
-
-## 0. 아키텍처 확정 체크
-
-- [ ] 프론트: `web` (React + Vite + Capacitor)
-- [ ] 백엔드: `server` (FastAPI)
-- [ ] DB: Supabase Postgres (무료 플랜)
-- [ ] 서버 호스팅: Render Web Service (무료 플랜)
-- [ ] Render 절전 방지: 외부 cron에서 14분 간격 핑
-- [ ] 배포 산출물: Android AAB (Play 업로드용)
+> 대상: 현재 `web` 폴더(React + Vite)와 `server`(FastAPI)를 사용하는 CarCare 프로젝트를 **Capacitor로 Android 앱 패키징**하여 Google Play Console에 출시하는 절차입니다.
+> 날짜 기준: 2026-01-23
 
 ---
 
-## 1. 무료 운영 원칙 체크
+## 0) 전제 조건/준비물
 
-- [ ] Supabase 무료 플랜 한도(용량/트래픽/휴면 정책) 확인
-- [ ] Render 무료 플랜 한도(빌드 시간/실행 시간/휴면 정책) 확인
-- [ ] cron 서비스 무료 플랜 한도(실행 주기/잡 개수) 확인
-- [ ] 월별 사용량 초과 시 대응 정책 문서화
-- [ ] 팀 공용 문서에 비용 0원 운영 정책 명시
+- Google Play Console 개발자 계정 (유료, 1회 결제)
+- Android Studio 최신 버전 설치
+- JDK 17 설치
+- 프로젝트 빌드가 가능한 로컬 환경
+- 백엔드 서버가 **외부에서 접근 가능한 HTTPS 도메인**을 갖추고 있어야 함
 
----
-
-## 2. 사전 준비 체크
-
-- [ ] Google Play Console 계정 준비
-- [ ] Android Studio 설치
-- [ ] JDK 17 설치
-- [ ] Node.js LTS 설치
-- [ ] Python 3.11+ 설치
-- [ ] Git 저장소 최신 반영
-- [ ] 앱 패키지명 확정 (`com.carcare.app` 등)
-- [ ] 앱 이름 확정
-- [ ] 개인정보처리방침 URL 확정
+> **중요**: 스토어 배포 앱은 `http://127.0.0.1` 같은 로컬 API 주소를 사용할 수 없습니다. 반드시 **HTTPS 도메인**으로 교체해야 합니다.
 
 ---
 
-## 3. Supabase 설정 체크
+## 1) 프로젝트 설정 확인 (Capacitor 기준)
 
-### 3-1. 프로젝트 생성
+### 1-1. API 주소 환경변수
 
-- [ ] Supabase에서 새 프로젝트 생성
-- [ ] DB 비밀번호 안전하게 저장(비밀 관리자 권장)
-- [ ] Region 선택(사용자와 가까운 리전)
+`web/.env` 파일을 만들고 실제 서버 주소를 설정합니다.
 
-### 3-2. DB 연결 정보 확보
-
-- [ ] `Project Settings -> Database`에서 Connection String 확인
-- [ ] SQLAlchemy용 URL 형태로 변환 확인  
-  예: `postgresql+psycopg2://USER:PASSWORD@HOST:PORT/postgres`
-- [ ] SSL 옵션 확인(`sslmode=require` 필요 시 반영)
-
-### 3-3. 스키마 반영
-
-- [ ] 로컬에서 마이그레이션/테이블 생성 수행
-- [ ] 핵심 테이블 생성 확인(`users`, `vehicles`, `maintenance_records`, `fuel_records` 등)
-- [ ] 인덱스 확인(조회 성능 관련)
-- [ ] 시드 데이터 필요 시 반영(제조사/모델 등)
-
-### 3-4. DB 연결 검증
-
-- [ ] 로컬 FastAPI에서 Supabase DB 연결 성공
-- [ ] CRUD 테스트 성공(차량 등록/조회, 정비 등록/조회)
-- [ ] 타이어/법적정보 API까지 정상 작동 확인
-
----
-
-## 4. FastAPI 프로덕션 설정 체크
-
-### 4-1. 환경변수 정리
-
-- [ ] `DATABASE_URL`을 Supabase URL로 변경
-- [ ] `JWT_SECRET` 강력한 랜덤 값으로 교체
-- [ ] `JWT_ALG=HS256` 확인
-- [ ] 로컬 `.env`와 운영 환경변수 분리
-
-### 4-2. CORS/보안
-
-- [ ] `allow_origins=["*"]`를 운영 도메인 기준으로 축소할지 결정
-- [ ] 인증/인가 경로 정상 동작 확인
-- [ ] 비밀번호 해시/토큰 만료 정책 확인
-
-### 4-3. 헬스체크 엔드포인트
-
-- [ ] `/health` 또는 `/api/health` 엔드포인트 준비
-- [ ] DB 연결 여부까지 확인하는 간단한 헬스체크 구현
-- [ ] cron 핑 대상 URL 확정
-
----
-
-## 5. Render 배포 체크
-
-### 5-1. 서비스 생성
-
-- [ ] Render에서 `Web Service` 생성
-- [ ] GitHub 저장소 연결
-- [ ] Root Directory를 `server`로 설정
-- [ ] Runtime: Python
-
-### 5-2. 빌드/실행 명령
-
-- [ ] Build Command 설정  
-  `pip install -r requirements.txt`
-- [ ] Start Command 설정  
-  `uvicorn app:app --host 0.0.0.0 --port $PORT`
-
-### 5-3. 환경변수 등록
-
-- [ ] `DATABASE_URL`
-- [ ] `JWT_SECRET`
-- [ ] `JWT_ALG`
-- [ ] 기타 필요한 설정값
-
-### 5-4. 배포 검증
-
-- [ ] Render 배포 로그에서 에러 없음 확인
-- [ ] 공개 URL에서 `/docs` 접근 확인
-- [ ] 핵심 API 호출 성공 확인
-
----
-
-## 6. Render 절전 방지 cron 체크 (14분)
-
-### 6-1. cron 서비스 준비
-
-- [ ] cron-job.org(또는 동등 서비스) 계정 생성
-- [ ] 새 잡 생성
-- [ ] URL: Render 헬스체크 엔드포인트 입력
-- [ ] Method: `GET`
-- [ ] Interval: `14 minutes`
-- [ ] Timeout: 10~20초 설정
-
-### 6-2. 검증
-
-- [ ] 수동 실행 1회 성공(HTTP 200)
-- [ ] 다음 예약 실행 성공 확인
-- [ ] Render 로그에서 주기적 요청 확인
-- [ ] 24시간 이후에도 슬립 없이 응답되는지 확인
-
-### 6-3. 장애 대응
-
-- [ ] cron 실패 시 이메일 알림 켜기
-- [ ] Render 장애 시 재배포 절차 문서화
-- [ ] 무료 플랜 정책 변경 시 대체안 준비
-
----
-
-## 7. 프론트엔드 프로덕션 설정 체크 (Vite)
-
-### 7-1. API URL 반영
-
-- [ ] `web/.env.production` 생성
-- [ ] `VITE_API_BASE_URL=https://<render-domain>/api` 설정
-- [ ] 로컬 개발용 `.env`와 분리
-
-### 7-2. 빌드 검증
-
-- [ ] `cd web`
-- [ ] `npm install`
-- [ ] `npm run build`
-- [ ] 빌드 성공 확인
-- [ ] `dist` 내부에 운영 API 주소 반영 확인
-
----
-
-## 8. Capacitor + Android 동기화 체크
-
-### 8-1. 동기화
-
-- [ ] `cd web`
-- [ ] `npm run cap:sync`
-- [ ] `android` 프로젝트 동기화 성공
-
-### 8-2. AndroidManifest 점검
-
-- [ ] `INTERNET` 권한 확인
-- [ ] Cleartext 트래픽 사용 안 함 확인(HTTPS 기준)
-- [ ] 앱 아이콘/스플래시 확인
-
-### 8-3. 기기 테스트
-
-- [ ] 에뮬레이터 실행 테스트
-- [ ] 실기기 실행 테스트
-- [ ] 로그인/차량선택/대시보드/핵심 CRUD 테스트
-- [ ] 백버튼 동작 확인
-
----
-
-## 9. 서명 및 AAB 생성 체크
-
-### 9-1. 키스토어 생성/보관
-
-- [ ] 릴리스 키스토어 생성
-- [ ] 키 alias/비밀번호 안전 보관
-- [ ] 팀 공유 보안 저장소에 백업
-
-### 9-2. Gradle 서명 설정
-
-- [ ] `web/android/app/build.gradle`에 `signingConfigs.release` 반영
-- [ ] 비밀번호는 `gradle.properties`/CI Secret로 분리
-- [ ] Git에 민감정보 커밋 금지 확인
-
-### 9-3. 번들 생성
-
-- [ ] `cd web/android`
-- [ ] `./gradlew bundleRelease` (Windows: `gradlew.bat bundleRelease`)
-- [ ] `app-release.aab` 생성 확인
-
----
-
-## 10. Google Play Console 등록 체크
-
-### 10-1. 앱 기본 정보
-
-- [ ] 앱 생성(앱명/언어/카테고리)
-- [ ] 무료 앱으로 설정
-- [ ] 패키지명 일치 확인
-
-### 10-2. 스토어 등록정보
-
-- [ ] 앱 아이콘(512x512) 업로드
-- [ ] 기능 그래픽(1024x500) 업로드
-- [ ] 스크린샷 2장 이상 업로드
-- [ ] 간단 설명/자세한 설명 작성
-
-### 10-3. 정책/설문
-
-- [ ] 개인정보처리방침 URL 입력
-- [ ] Data Safety 설문 완료
-- [ ] 광고 포함 여부 설정
-- [ ] 앱 액세스(로그인 필요 시 테스트 계정) 입력
-- [ ] 콘텐츠 등급 완료
-
-### 10-4. 릴리스
-
-- [ ] Internal Testing 트랙에 AAB 업로드
-- [ ] 내부 테스터 설치 검증
-- [ ] 문제 없으면 Production 릴리스 생성
-
----
-
-## 11. 출시 전 최종 점검 체크리스트
-
-- [ ] Render API URL이 앱 빌드에 정확히 반영됨
-- [ ] Supabase 연결 안정적이며 쿼리 에러 없음
-- [ ] cron 14분 핑이 정상 수행됨
-- [ ] 앱 첫 실행부터 주요 플로우 오류 없음
-- [ ] 앱 종료/백그라운드/재실행 시 세션 정상
-- [ ] Play Console 필수 항목 누락 없음
-- [ ] 버전코드 증가 확인
-- [ ] 릴리스 노트 작성 완료
-
----
-
-## 12. 출시 후 운영 체크
-
-- [ ] 매일 Render 로그/에러 확인
-- [ ] Supabase 사용량(저장공간/쿼리) 주간 확인
-- [ ] cron 실패 알림 모니터링
-- [ ] 사용자 피드백/리뷰 대응
-- [ ] 다음 버전 배포 시 버전코드 증가
-
----
-
-## 13. 실행 명령 빠른 참조
-
-```bash
-# 1) 프론트 빌드
-cd web
-npm install
-npm run build
-
-# 2) Capacitor 동기화
-npm run cap:sync
-
-# 3) Android 번들 생성
-cd android
-gradlew.bat bundleRelease
+```env
+VITE_API_BASE_URL=https://api.yourdomain.com/api
 ```
 
 ---
 
-## 14. 운영비 0원 유지 조건 요약
+## 1-1a) HTTPS 도메인 준비 (API 서버 공개용)
 
-- [ ] Render 무료 티어 한도 내 유지
-- [ ] Supabase 무료 티어 한도 내 유지
-- [ ] cron 무료 티어 한도 내 유지
-- [ ] 트래픽 급증 시 유료 전환 기준 사전 정의
+> 목표: 모바일 앱이 어디서든 접근 가능한 **HTTPS API 도메인**을 준비합니다.  
+> 예시 도메인: `https://api.yourdomain.com/api`
 
-> 주의: 무료 플랜 정책은 변경될 수 있으므로 월 1회 정책 재확인 필요.
+### 1-1a-1. 도메인 준비
+
+- 도메인을 구매하거나 기존 도메인을 사용합니다.
+- `api.yourdomain.com` 같은 **서브도메인**을 API 용도로 권장합니다.
+
+### 1-1a-2. 서버에 API 배포
+
+- FastAPI 서버를 인터넷에 노출 가능한 서버(예: Ubuntu VM)에 배포합니다.
+- 방화벽에서 80/443 포트를 허용합니다.
+
+#### 확인 방법
+
+- 방화벽 상태 확인 (Ubuntu UFW 기준)
+
+```bash
+sudo ufw status
+```
+
+- 서버에서 FastAPI 프로세스 확인
+
+```bash
+ps aux | grep uvicorn
+```
+
+### 1-1a-3. 리버스 프록시(Nginx) 설정
+
+1) Nginx 설치
+
+```bash
+sudo apt update
+sudo apt install nginx
+```
+
+2) Nginx 사이트 설정 파일 생성
+
+```bash
+sudo nano /etc/nginx/sites-available/carcare-api
+```
+
+3) 아래 내용을 입력하고 저장합니다.
+
+```nginx
+server {
+    listen 80;
+    server_name api.yourdomain.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+4) 심볼릭 링크 활성화 및 재시작
+
+```bash
+sudo ln -s /etc/nginx/sites-available/carcare-api /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+#### 확인 방법
+
+- Nginx 설정 테스트 결과에 `syntax is ok` / `test is successful`가 나와야 합니다.
+
+```bash
+sudo nginx -t
+```
+
+- Nginx 실행 상태 확인
+
+```bash
+sudo systemctl status nginx
+```
+
+### 1-1a-4. HTTPS 인증서 발급 (Let’s Encrypt)
+
+1) Certbot 설치
+
+```bash
+sudo apt install certbot python3-certbot-nginx
+```
+
+2) 인증서 발급
+
+```bash
+sudo certbot --nginx -d api.yourdomain.com
+```
+
+3) 자동 갱신 확인
+
+```bash
+sudo certbot renew --dry-run
+```
+
+#### 확인 방법
+
+- 인증서가 정상인지 확인
+
+```bash
+sudo certbot certificates
+```
+
+### 1-1a-5. FastAPI 실행 확인
+
+- `http://127.0.0.1:8000`에서 FastAPI가 정상 실행 중인지 확인합니다.
+- 외부에서 `https://api.yourdomain.com/api` 호출이 성공해야 합니다.
+
+#### 확인 방법
+
+- 서버 내부에서 로컬 호출 확인
+
+```bash
+curl -I http://127.0.0.1:8000
+```
+
+- 외부에서 HTTPS 호출 확인
+
+```bash
+curl -I https://api.yourdomain.com/api
+```
+
+### 1-1a-6. 앱 환경변수 반영
+
+`web/.env`에 HTTPS 도메인을 넣고 다시 빌드합니다.
+
+```env
+VITE_API_BASE_URL=https://api.yourdomain.com/api
+```
+
+#### 확인 방법
+
+- 프론트 빌드 결과에 API 주소가 반영되는지 확인
+
+```bash
+cd web
+npm run build
+rg -n "VITE_API_BASE_URL|api.yourdomain.com" dist -S
+```
+
+---
+
+### 1-2. Capacitor 설정 확인
+
+`web/capacitor.config.json`
+
+- `appId`: 앱 고유 패키지명 (예: `com.carcare.app`)
+- `appName`: 앱 표시 이름 (예: `CarCare`)
+- `webDir`: `dist`
+
+---
+
+## 2) 프론트 빌드 및 Android 동기화
+
+아래 명령을 순서대로 실행합니다.
+
+```bash
+cd web
+npm install
+npm run build
+npm run cap:sync
+```
+
+> `cap:sync`는 빌드된 `dist`를 Android 프로젝트로 복사합니다.
+
+---
+
+## 3) Android Studio에서 앱 열기
+
+```bash
+npm run cap:open:android
+```
+
+Android Studio가 열리면 아래를 확인합니다.
+
+- Gradle Sync 정상 완료
+- Android Manifest 에 INTERNET 권한 확인
+- 앱 실행(에뮬레이터 또는 실기기)
+
+#### 확인 방법
+
+- INTERNET 권한 확인
+
+`web/android/app/src/main/AndroidManifest.xml`에 아래가 있어야 합니다.
+
+```xml
+<uses-permission android:name="android.permission.INTERNET" />
+```
+
+- 실제 기기에서 API 호출이 성공하는지 확인  
+  (로그에 200 응답이 찍히는지 확인)
+
+---
+
+## 4) 앱 아이콘/스플래시 교체
+
+### 4-1. 앱 아이콘
+
+Android Studio에서 `mipmap` 리소스를 교체합니다.
+
+경로 예시:
+
+```
+web/android/app/src/main/res/mipmap-*
+```
+
+### 4-2. 스플래시 화면
+
+`capacitor.config.json`에 설정을 반영했고, Android에서는 아래 경로를 사용합니다.
+
+```
+web/android/app/src/main/res/drawable
+```
+
+> 필요 시 Android Studio의 `Launch Screen` 설정에서 디자인을 수정합니다.
+
+---
+
+## 5) 앱 서명 키 생성 (Release Key)
+
+### 5-1. 키 생성
+
+```bash
+keytool -genkeypair -v \
+  -keystore carcare-release.keystore \
+  -alias carcare \
+  -keyalg RSA -keysize 2048 -validity 10000
+```
+
+### 5-2. 키 파일 보관
+
+- 생성된 `.keystore` 파일은 **절대 분실하면 안 됨**
+- 팀 내 안전한 보관 필요
+
+---
+
+## 6) Gradle에 서명 설정 추가
+
+`web/android/app/build.gradle`에 서명 정보를 추가합니다.
+
+```gradle
+android {
+    signingConfigs {
+        release {
+            storeFile file('carcare-release.keystore')
+            storePassword '비밀번호'
+            keyAlias 'carcare'
+            keyPassword '비밀번호'
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+            shrinkResources false
+        }
+    }
+}
+```
+
+> 실제 비밀번호는 로컬에서만 관리하고 Git에 절대 올리지 않습니다.
+
+#### 확인 방법
+
+- 릴리즈 빌드가 서명 오류 없이 완료되는지 확인합니다.
+
+---
+
+## 7) Release 빌드 생성 (AAB)
+
+Google Play는 **AAB(Android App Bundle)** 업로드를 요구합니다.
+
+```bash
+cd web/android
+./gradlew bundleRelease
+```
+
+빌드 결과:
+
+```
+web/android/app/build/outputs/bundle/release/app-release.aab
+```
+
+#### 확인 방법
+
+- AAB 파일이 실제로 생성됐는지 확인합니다.
+
+```bash
+ls web/android/app/build/outputs/bundle/release/
+```
+
+---
+
+## 8) Google Play Console 준비
+
+### 8-1. 앱 등록
+
+- Google Play Console 접속
+- **새 앱 만들기**
+- 기본 정보 입력 (앱 이름/언어/카테고리)
+
+### 8-2. 스토어 등록정보 입력
+
+필수 항목:
+- 앱 이름
+- 간단 설명
+- 자세한 설명
+- 스크린샷 (휴대폰 최소 2장)
+- 앱 아이콘 (512x512)
+- 기능 그래픽 (1024x500)
+
+---
+
+## 9) 앱 콘텐츠/정책
+
+Google 정책상 필수로 아래 항목을 입력해야 합니다.
+
+- 개인정보처리방침 URL
+- 데이터 수집/처리 관련 설문
+- 앱 액세스 관련 안내 (로그인 필요 여부)
+- 광고 포함 여부
+
+---
+
+## 10) AAB 업로드 및 출시
+
+### 10-1. 내부 테스트(Internal Testing) 권장
+
+- 테스트 트랙 생성
+- AAB 업로드
+- 테스터 이메일 등록
+- 실제 설치 확인
+
+### 10-2. 프로덕션 출시
+
+- 새 프로덕션 릴리스 생성
+- AAB 업로드
+- 출시 검토 요청
+
+---
+
+## 11) 출시 후 점검
+
+- 크래시/ANR 모니터링
+- 사용자 리뷰 대응
+- 업데이트 버전 관리
+
+---
+
+## 12) 자주 발생하는 문제
+
+### 12-1. API 주소 문제
+- `127.0.0.1` 사용 시 배포 앱에서 서버 호출 불가
+- 반드시 외부 HTTPS 주소로 변경
+
+### 12-2. 키스토어 분실
+- 키를 잃으면 기존 앱 업데이트 불가
+
+### 12-3. 스토어 심사 거절
+- 개인정보처리방침 누락
+- 스크린샷 품질 부족
+- 기능 설명 미흡
+
+---
+
+## 13) 체크리스트
+
+- [ ] 앱 아이콘/스플래시 교체
+- [ ] API 주소 HTTPS 반영
+- [ ] AAB 빌드 성공
+- [ ] 스토어 등록정보 완료
+- [ ] 정책 항목 완료
+- [ ] 내부 테스트 완료
+- [ ] 프로덕션 출시 요청
+
+---
+
+## 14) 참고
+
+- Google Play Console: https://play.google.com/console
+- Capacitor 공식 문서: https://capacitorjs.com/docs
+

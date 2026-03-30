@@ -1,11 +1,22 @@
 ﻿import { useState, useEffect } from "react";
 import api from "../api/client";
 
+const FUEL_TYPE_OPTIONS = [
+  { value: "gasoline", label: "휘발유" },
+  { value: "diesel", label: "경유" },
+  { value: "hybrid", label: "하이브리드" },
+  { value: "phev", label: "플러그인 하이브리드" },
+  { value: "ev", label: "전기" },
+];
+
+const fuelTypeLabel = (value) => FUEL_TYPE_OPTIONS.find((option) => option.value === value)?.label || value || null;
+
 export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, userId }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     plate_no: "",
     makerType: "domestic",
+    fuelType: "gasoline",
     maker: "",
     model: "",
     year: "",
@@ -78,6 +89,7 @@ export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, use
         odo_km: form.odo_km && !isNaN(form.odo_km) ? Number(form.odo_km) : 0,
         owner_name: form.owner_name || null,
         makerType: form.makerType || null,
+        fuelType: form.fuelType || null,
         userId,
       };
 
@@ -86,6 +98,7 @@ export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, use
       setForm({
         plate_no: "",
         makerType: "domestic",
+        fuelType: "gasoline",
         maker: "",
         model: "",
         year: "",
@@ -141,7 +154,7 @@ export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, use
             <div className="flex-1">
               <p className="text-base font-semibold text-text-light">{v.plate_no || "차량 번호 없음"}</p>
               <p className="text-sm text-subtext-light">
-                {[v.maker, v.model, v.year ? `${v.year}년형` : null, v.displacement_cc ? `${v.displacement_cc}cc` : null]
+                {[v.maker, v.model, fuelTypeLabel(v.fuelType), v.year ? `${v.year}년형` : null, v.displacement_cc ? `${v.displacement_cc}cc` : null]
                   .filter(Boolean)
                   .join(" · ")}
               </p>
@@ -273,6 +286,21 @@ export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, use
                     />
                   </label>
                 </div>
+
+                <label className="flex flex-col gap-2">
+                  <span className="text-sm font-medium">연료 타입</span>
+                  <select
+                    value={form.fuelType}
+                    onChange={(e) => setForm({ ...form, fuelType: e.target.value })}
+                    className="h-12 rounded-lg border border-border-light bg-surface-light px-3 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  >
+                    {FUEL_TYPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
                 <label className="flex flex-col gap-2">
                   <span className="text-sm font-medium">현재 주행거리 (km)</span>

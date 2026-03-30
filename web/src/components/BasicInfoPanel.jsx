@@ -1,5 +1,7 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../api/client";
+import ConfirmDialog from "./ui/ConfirmDialog";
+import { useToast } from "./ui/ToastProvider";
 
 const formatNumber = (value) => {
   if (value === null || value === undefined) return "-";
@@ -57,7 +59,17 @@ const baseIconMap = {
   "차량 종류": "category",
   "배기량": "toll",
   "소유자": "person",
+  "연료 타입": "local_gas_station",
 };
+
+const fuelTypeLabel = (value) =>
+  ({
+    gasoline: "휘발유",
+    diesel: "경유",
+    hybrid: "하이브리드",
+    phev: "플러그인 하이브리드",
+    ev: "전기",
+  })[value] || value || "-";
 
 const scheduleIconMap = {
   "보험 만기일": "event_available",
@@ -104,6 +116,7 @@ function InfoItem({ label, value, badge, icon, onClick }) {
 }
 
 export default function BasicInfoPanel({ vehicle, onRefresh }) {
+  const { showToast } = useToast();
   const [legalInfo, setLegalInfo] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -114,6 +127,7 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
   const [odoLogLoading, setOdoLogLoading] = useState(false);
   const [odoLogError, setOdoLogError] = useState("");
   const [odoSelected, setOdoSelected] = useState({});
+  const [odoDeleteConfirmOpen, setOdoDeleteConfirmOpen] = useState(false);
 
   const loadLegalInfo = useCallback(async () => {
     if (!vehicle?.id) {
@@ -211,22 +225,21 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
     if (!vehicle?.id) return;
     const ids = Object.keys(odoSelected).filter((id) => odoSelected[id]).map(Number);
     if (!ids.length) {
-      alert("삭제할 이력을 선택해주세요.");
-      return;
-    }
-    if (!confirm("선택한 주행 이력을 삭제할까요? 삭제 후 복구할 수 없습니다.")) {
+      showToast({ tone: "warning", message: "삭제할 이력을 선택해주세요." });
       return;
     }
     try {
       await api.post("/odometer/delete", { vehicleId: vehicle.id, ids });
+      setOdoDeleteConfirmOpen(false);
       if (onRefresh) {
         await onRefresh(vehicle.id);
       }
       await loadCurrentOdo();
       await loadOdoLogs();
+      showToast({ tone: "success", message: "선택한 주행 이력을 삭제했습니다." });
     } catch (err) {
       console.error("주행 이력 삭제 실패:", err);
-      alert("주행 이력 삭제에 실패했습니다.");
+      showToast({ tone: "error", message: "주행 이력 삭제에 실패했습니다." });
     }
   };
 
@@ -241,6 +254,7 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
       { label: "차량 번호", value: vehicle.plate_no || "-" },
       { label: "제조사", value: vehicle.maker || "-" },
       { label: "차량 모델", value: vehicle.model || "-" },
+      { label: "연료 타입", value: fuelTypeLabel(vehicle.fuelType) },
       { label: "연식", value: vehicle.year || "-" },
       { label: "현재 주행거리", value: odoLabel },
       { label: "차량 종류", value: vehicle.makerType || "-" },
@@ -590,7 +604,7 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
               <button
                 type="button"
                 className="flex-1 rounded-full bg-red-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-600"
-                onClick={handleOdoDelete}
+                onClick={() => setOdoDeleteConfirmOpen(true)}
                 disabled={odoLogLoading || odoLogs.length === 0}
               >
                 선택 삭제
@@ -599,6 +613,14 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
           </div>
         </div>
       )}
+      <ConfirmDialog
+        open={odoDeleteConfirmOpen}
+        title="주행 이력 삭제"
+        description="선택한 주행 이력을 삭제합니다. 삭제 후 복구할 수 없습니다."
+        confirmLabel="삭제"
+        onConfirm={handleOdoDelete}
+        onCancel={() => setOdoDeleteConfirmOpen(false)}
+      />
     </div>
   );
 }

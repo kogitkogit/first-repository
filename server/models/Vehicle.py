@@ -12,6 +12,7 @@ class Vehicle(Base):
     maker = Column(String(64))
     model = Column(String(64))
     makerType = Column(String(64))
+    fuelType = Column(String(32))
     year = Column(Integer)
     odo_km = Column(Integer, default=0)
     insurance_exp = Column(Date)
