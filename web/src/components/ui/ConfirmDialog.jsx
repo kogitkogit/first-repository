@@ -17,8 +17,8 @@ export default function ConfirmDialog({
       : "bg-primary hover:bg-primary/90";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-0 sm:items-center sm:justify-center sm:p-4">
-      <div className="w-full max-w-md rounded-t-3xl bg-surface-light p-6 shadow-2xl sm:rounded-3xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-md rounded-3xl bg-surface-light p-6 shadow-2xl">
         <div className="space-y-2">
           <h2 className="text-lg font-semibold text-text-light">{title}</h2>
           {description ? <p className="text-sm text-subtext-light">{description}</p> : null}

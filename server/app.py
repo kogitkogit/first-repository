@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from api import auth, vehicles, maintenance, consumables, expenses, fuel, notifications, ai_dashboard, odometer, tires, legal
+from api import auth, vehicles, maintenance, consumables, expenses, fuel, charging, notifications, ai_dashboard, odometer, tires, legal
 from core.config import settings
 from db.session import engine
 
@@ -28,6 +28,7 @@ app.include_router(maintenance.router, prefix="/api/maintenance", tags=["mainten
 app.include_router(consumables.router, prefix="/api/consumables", tags=["consumables"])
 app.include_router(expenses.router, prefix="/api/expenses", tags=["expenses"])
 app.include_router(fuel.router, prefix="/api/fuel", tags=["fuel"])
+app.include_router(charging.router, prefix="/api/charging", tags=["charging"])
 app.include_router(notifications.router, prefix="/api/notifications", tags=["notifications"])
 app.include_router(legal.router, prefix="/api/legal", tags=["legal"])
 app.include_router(ai_dashboard.router, prefix="/api/ai_dashboard", tags=["ai_dashboard"])

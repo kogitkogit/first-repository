@@ -17,6 +17,7 @@ import DrivingAnalysisPanel from "./components/DrivingAnalysisPanel";
 import CostManagementPanel from "./components/CostManagementPanel";
 import SettingsPanel from "./components/SettingsPanel";
 import TasksPanel from "./components/TasksPanel";
+import InitialSetupGuide from "./components/InitialSetupGuide";
 
 const BOTTOM_ROUTES = [
   { key: "home", label: "홈", icon: "home", path: "/" },
@@ -27,10 +28,11 @@ const BOTTOM_ROUTES = [
 ];
 const ROUTE_TITLES = {
   "/": "차량 대시보드",
+  "/setup-guide": "초기 설정 가이드",
   "/tasks": "할 일 관리",
   "/basic": "차량 기본 정보",
   "/maintenance": "정비 이력",
-  "/fuel": "주유 관리",
+  "/fuel": "주유/충전 관리",
   "/driving": "주행 분석",
   "/costs": "비용 관리",
   "/expenses": "비용 기록",
@@ -280,6 +282,15 @@ function AppShell({ selectedVehicle, setSelectedVehicle, vehicles, fetchVehicles
     }
   }, [selectedVehicle, location.pathname, navigate]);
 
+  useEffect(() => {
+    if (!selectedVehicle || location.pathname !== "/") return;
+    if (typeof window === "undefined") return;
+    const key = `setup-guide-pending:${selectedVehicle.id}`;
+    if (localStorage.getItem(key) === "1") {
+      navigate("/setup-guide", { replace: true });
+    }
+  }, [selectedVehicle, location.pathname, navigate]);
+
   return (
     <div className="relative flex min-h-screen flex-col bg-background-light text-text-light">
       <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-border-light bg-background-light/95 px-4 backdrop-blur">
@@ -341,12 +352,27 @@ function AppShell({ selectedVehicle, setSelectedVehicle, vehicles, fetchVehicles
                 refreshVehicle(v.id);
                 navigate("/");
               }}
-              onCreated={() => fetchVehicles().catch(() => {})}
+              onCreated={(createdVehicleId) => {
+                if (typeof window !== "undefined" && createdVehicleId) {
+                  localStorage.setItem(`setup-guide-pending:${createdVehicleId}`, "1");
+                }
+                fetchVehicles(createdVehicleId)
+                  .then(() => navigate("/"))
+                  .catch(() => {});
+              }}
               userId={userId}
             />
           </div>
         ) : (
           <Routes>
+            <Route
+              path="/setup-guide"
+              element={
+                <PanelGuard vehicle={selectedVehicle}>
+                  <InitialSetupGuide vehicle={selectedVehicle} />
+                </PanelGuard>
+              }
+            />
             <Route
               path="/"
               element={
@@ -421,6 +447,7 @@ function AppShell({ selectedVehicle, setSelectedVehicle, vehicles, fetchVehicles
                   <OilPanel
                     vehicleId={selectedVehicle.id}
                     currentMileage={selectedVehicle.odo_km}
+                    fuelType={selectedVehicle.fuelType}
                     apiClient={api}
                     userId={userId}
                     hideLocalBack
@@ -435,6 +462,7 @@ function AppShell({ selectedVehicle, setSelectedVehicle, vehicles, fetchVehicles
                   <FilterPanel
                     vehicleId={selectedVehicle.id}
                     currentMileage={selectedVehicle.odo_km}
+                    fuelType={selectedVehicle.fuelType}
                     apiClient={api}
                     userId={userId}
                     hideLocalBack
@@ -449,6 +477,7 @@ function AppShell({ selectedVehicle, setSelectedVehicle, vehicles, fetchVehicles
                   <OtherConsumablesPanel
                     vehicleId={selectedVehicle.id}
                     currentMileage={selectedVehicle.odo_km}
+                    fuelType={selectedVehicle.fuelType}
                     apiClient={api}
                     userId={userId}
                     hideLocalBack

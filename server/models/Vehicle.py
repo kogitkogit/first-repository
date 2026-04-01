@@ -21,4 +21,5 @@ class Vehicle(Base):
 
     user = relationship("User", back_populates="vehicles")
     fuel_records = relationship("FuelRecord", back_populates="vehicle", cascade="all, delete-orphan")
+    charging_records = relationship("ChargingRecord", back_populates="vehicle", cascade="all, delete-orphan")
     tires = relationship("VehicleTire", back_populates="vehicle", cascade="all, delete-orphan")

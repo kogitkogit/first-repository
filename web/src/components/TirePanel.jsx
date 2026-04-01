@@ -1,6 +1,7 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import api from "../api/client";
 import PanelTabs from "./PanelTabs";
+import { useToast } from "./ui/ToastProvider";
 
 const POSITIONS = [
   { key: "front_left", label: "전륜(좌)", short: "FL" },
@@ -20,22 +21,25 @@ const STATUS_RING = {
   ok: "border-emerald-400",
   warning: "border-amber-400",
   critical: "border-red-500",
+  muted: "border-slate-300",
 };
 
 const STATUS_BADGE = {
   ok: "bg-emerald-100 text-emerald-700",
   warning: "bg-amber-100 text-amber-700",
   critical: "bg-red-100 text-red-700",
+  muted: "bg-slate-100 text-slate-600",
 };
 
 const STATUS_LABEL = {
   ok: "정상",
   warning: "점검 필요",
   critical: "위험",
+  muted: "작성 필요",
 };
 
 const SERVICE_TYPE_LABEL = {
-  replacement: "교차",
+  replacement: "교체",
   rotation: "로테이션",
   alignment: "얼라인먼트",
   inspection: "점검",
@@ -73,6 +77,12 @@ const emptyServiceForm = (vehicle, type) => ({
   pattern: type === "alignment" ? "얼라인먼트" : type === "rotation" ? "로테이션" : "",
 });
 
+const MISSING_WARNING_MESSAGES = [
+  "No tire metadata registered yet.",
+  "Measurement timestamp missing.",
+  "No pressure measurement recorded yet.",
+];
+
 function toDateTimeLocalString(date) {
   if (!date) return "";
   const tzOffset = date.getTimezoneOffset() * 60000;
@@ -91,7 +101,13 @@ function toInt(value) {
   return Number.isFinite(n) ? Math.trunc(n) : undefined;
 }
 
+function isTireMissingInfo(item) {
+  const warnings = item?.warnings || [];
+  return warnings.length > 0 && warnings.every((warning) => MISSING_WARNING_MESSAGES.includes(warning));
+}
+
 export default function TirePanel({ vehicle }) {
+  const { showToast } = useToast();
   const [summary, setSummary] = useState(null);
   const [selected, setSelected] = useState(POSITIONS[0].key);
   const [history, setHistory] = useState({ measurements: [], services: [] });
@@ -115,6 +131,8 @@ export default function TirePanel({ vehicle }) {
     if (selectedSummary?.position_label) return selectedSummary.position_label;
     return POSITIONS.find((item) => item.key === selected)?.label || "선택된 타이어 없음";
   }, [selected, selectedSummary?.position_label]);
+
+  const selectedStatusKey = isTireMissingInfo(selectedSummary) ? "muted" : selectedSummary?.status ?? "ok";
 
   useEffect(() => {
     if (!vehicle) return;
@@ -206,7 +224,7 @@ export default function TirePanel({ vehicle }) {
       setMetaEditing(false);
     } catch (error) {
       console.error("Failed to update tire", error);
-      alert("타이어 정보를 저장하지 못했습니다. 자세한 내용은 콘솔을 확인하세요.");
+      showToast({ tone: "error", message: "타이어 정보를 저장하지 못했습니다." });
     } finally {
       setLoading(false);
     }
@@ -233,7 +251,7 @@ export default function TirePanel({ vehicle }) {
       setMeasurementForm(emptyMeasurementForm());
     } catch (error) {
       console.error("Failed to save measurement", error);
-      alert("계측값을 저장하지 못했습니다. 자세한 내용은 콘솔을 확인하세요.");
+      showToast({ tone: "error", message: "계측값을 저장하지 못했습니다." });
     } finally {
       setLoading(false);
     }
@@ -247,7 +265,7 @@ export default function TirePanel({ vehicle }) {
   const handleServiceSave = async () => {
     if (!vehicle || !serviceModal.type) return;
     if (!serviceForm.performed_at) {
-      alert("서비스 날짜를 입력해야 합니다.");
+      showToast({ tone: "warning", message: "서비스 날짜를 입력해주세요." });
       return;
     }
     setLoading(true);
@@ -285,7 +303,7 @@ export default function TirePanel({ vehicle }) {
       setServiceForm(emptyServiceForm(vehicle, "rotation"));
     } catch (error) {
       console.error("Failed to save service", error);
-      alert("서비스 기록을 저장하지 못했습니다. 자세한 내용은 콘솔을 확인하세요.");
+      showToast({ tone: "error", message: "서비스 기록을 저장하지 못했습니다." });
     } finally {
       setLoading(false);
     }
@@ -342,8 +360,8 @@ export default function TirePanel({ vehicle }) {
                   <p className="text-xs uppercase text-subtext-light">선택된 타이어</p>
                   <h2 className="text-lg font-semibold text-text-light">{selectedSummary?.position_label ?? "타이어"}</h2>
                 </div>
-                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_BADGE[selectedSummary?.status ?? "ok"]}`}>
-                  {STATUS_LABEL[selectedSummary?.status ?? "ok"]}
+                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_BADGE[selectedStatusKey]}`}>
+                  {STATUS_LABEL[selectedStatusKey]}
                 </span>
               </div>
               <p className="mt-2 text-sm text-subtext-light">
@@ -354,7 +372,7 @@ export default function TirePanel({ vehicle }) {
                 <div className="absolute inset-y-8 left-1/2 w-12 -translate-x-1/2 rounded-full bg-border-light/70" />
                 {POSITIONS.map((pos) => {
                   const item = summary?.tires.find((t) => t.position === pos.key);
-                  const status = item?.status ?? "ok";
+                  const status = isTireMissingInfo(item) ? "muted" : item?.status ?? "ok";
                   const ring = STATUS_RING[status] ?? STATUS_RING.ok;
                   const isActive = selected === pos.key;
                   return (
@@ -419,7 +437,7 @@ export default function TirePanel({ vehicle }) {
               <h3 className="text-base font-semibold text-text-light">서비스 작업</h3>
               <p className="text-sm text-subtext-light">교체 이력과 정비소 방문을 등록하세요.</p>
               <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <ActionButton label="교차" onClick={() => openServiceModal("replacement")} />
+                <ActionButton label="교체" onClick={() => openServiceModal("replacement")} />
                 <ActionButton label="로테이션" onClick={() => openServiceModal("rotation")} />
                 <ActionButton label="얼라인먼트" onClick={() => openServiceModal("alignment")} />
               </div>
@@ -540,7 +558,7 @@ export default function TirePanel({ vehicle }) {
                           lines={[
                             { label: "공기압", value: row.pressure_kpa != null ? `${row.pressure_kpa.toFixed(1)} kPa` : "-" },
                             { label: "트레드", value: row.tread_depth_mm != null ? `${row.tread_depth_mm.toFixed(1)} mm` : "-" },
-                            { label: "온도", value: row.temperature_c != null ? `${row.temperature_c.toFixed(1)} degC` : "-" },
+                            { label: "온도", value: row.temperature_c != null ? `${row.temperature_c.toFixed(1)} ℃` : "-" },
                           ]}
                         />
                       ))}
@@ -573,7 +591,7 @@ export default function TirePanel({ vehicle }) {
         {measurementModalOpen ? (
           <Modal
             title="계측값 기록"
-            on닫기={() => setMeasurementModalOpen(false)}
+            onClose={() => setMeasurementModalOpen(false)}
             actions={
               <div className="flex flex-col gap-3">
                 <button disabled={loading} className={PRIMARY_BUTTON_CLASS} onClick={handleMeasurementSave}>
@@ -589,15 +607,15 @@ export default function TirePanel({ vehicle }) {
               <input type="datetime-local" className={INPUT_CLASS} value={measurementForm.measured_at} onChange={(e) => setMeasurementForm((prev) => ({ ...prev, measured_at: e.target.value }))} required />
               <input type="number" step="0.1" className={INPUT_CLASS} placeholder="공기압 (kPa)" value={measurementForm.pressure_kpa} onChange={(e) => setMeasurementForm((prev) => ({ ...prev, pressure_kpa: e.target.value }))} />
               <input type="number" step="0.1" className={INPUT_CLASS} placeholder="트레드 깊이 (mm)" value={measurementForm.tread_depth_mm} onChange={(e) => setMeasurementForm((prev) => ({ ...prev, tread_depth_mm: e.target.value }))} />
-              <input type="number" step="0.1" className={INPUT_CLASS} placeholder="온도 (degC)" value={measurementForm.temperature_c} onChange={(e) => setMeasurementForm((prev) => ({ ...prev, temperature_c: e.target.value }))} />
+              <input type="number" step="0.1" className={INPUT_CLASS} placeholder="온도 (℃)" value={measurementForm.temperature_c} onChange={(e) => setMeasurementForm((prev) => ({ ...prev, temperature_c: e.target.value }))} />
             </div>
           </Modal>
         ) : null}
 
         {serviceModal.open ? (
           <Modal
-            title={serviceModal.type === "replacement" ? "교차 기록" : serviceModal.type === "alignment" ? "얼라인먼트 기록" : "로테이션 기록"}
-            on닫기={() => setServiceModal({ open: false, type: null })}
+            title={serviceModal.type === "replacement" ? "교체 기록" : serviceModal.type === "alignment" ? "얼라인먼트 기록" : "로테이션 기록"}
+            onClose={() => setServiceModal({ open: false, type: null })}
             actions={
               <div className="flex flex-col gap-3">
                 <button disabled={loading} className={PRIMARY_BUTTON_CLASS} onClick={handleServiceSave}>
@@ -665,13 +683,13 @@ function HistoryCard({ title, lines }) {
   );
 }
 
-function Modal({ title, on닫기, children, actions }) {
+function Modal({ title, onClose, children, actions }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:items-center">
       <div className="w-full max-w-md rounded-3xl bg-surface-light p-6 shadow-xl">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-text-light">{title}</h2>
-          <button className="text-subtext-light" onClick={on닫기} aria-label="대화 상자 닫기">
+          <button className="text-subtext-light" onClick={onClose} aria-label="대화 상자 닫기">
             닫기
           </button>
         </div>

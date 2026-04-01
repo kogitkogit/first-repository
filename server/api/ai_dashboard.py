@@ -1,8 +1,8 @@
-from fastapi import APIRouter, UploadFile, File
+from fastapi import APIRouter, File, HTTPException, UploadFile
+
 router = APIRouter()
+
 
 @router.post("/analyze")
 async def analyze_dashboard_image(file: UploadFile = File(...)):
-    # TODO: Gemini API 연동 (계기판 OCR)
-    # 현재는 목업 응답
-    return {"odo_km_detected": 65432, "note": "Mocked until Gemini integration"}
+    raise HTTPException(status_code=503, detail="계기판 OCR 기능은 현재 준비 중입니다.")

@@ -173,6 +173,11 @@ export default function MaintenancePanel({ vehicle }) {
 
   const totalCostMonth = useMemo(() => Number(overview?.total_cost_month ?? 0), [overview]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [vehicle?.id]);
+
   const applyRecordFilters = useCallback(
     (items) => {
       let list = [...items];

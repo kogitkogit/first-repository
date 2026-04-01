@@ -12,6 +12,7 @@ from models import (  # noqa: F401
     CarMakerAbroad,
     CarModel,
     CarModelAbroad,
+    ChargingRecord,
     ConsumableItem,
     Expense,
     FuelRecord,

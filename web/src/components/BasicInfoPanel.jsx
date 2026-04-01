@@ -168,6 +168,12 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
     loadCurrentOdo();
   }, [loadLegalInfo, loadCurrentOdo]);
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    }
+  }, [vehicle?.id]);
+
   const handleRefreshClick = async () => {
     await Promise.all([
       loadLegalInfo(),

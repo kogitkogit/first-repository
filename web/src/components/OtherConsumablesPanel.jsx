@@ -14,6 +14,15 @@ const DEFAULTS = {
 
 const BASE_ITEMS = Object.keys(DEFAULTS).map((kind) => ({ key: kind, kind }));
 
+function supportsOtherItem(kind, fuelType) {
+  if (fuelType !== "ev") return true;
+  return !/점화플러그|스파크.?플러그/i.test(String(kind || ""));
+}
+
+function getVisibleBaseItems(fuelType) {
+  return BASE_ITEMS.filter((item) => supportsOtherItem(item.kind, fuelType));
+}
+
 const toIntOrNull = (v) => {
   if (v === undefined || v === null || v === "") return null;
   const n = Number(v);
@@ -253,7 +262,7 @@ function ItemCard({ item, state, onOpenDetail, onDelete, currentMileage, alertsE
     );
   }
 
-function DetailModal({ open, item, onClose, onChange, onSaveHistory, onSaveConfig, onOpenHistory }) {
+function DetailModal({ open, item, onClose, onChange, onSaveHistory, onSaveConfig, onOpenHistory, onCopyLatest }) {
   if (!open || !item) return null;
   const flash = item.flash;
 
@@ -357,6 +366,14 @@ function DetailModal({ open, item, onClose, onChange, onSaveHistory, onSaveConfi
 
 
             <div className="flex flex-wrap justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => onCopyLatest?.(item.key)}
+              className="flex items-center gap-2 rounded-full border border-border-light px-4 py-2 text-sm font-semibold text-subtext-light transition hover:text-primary"
+            >
+              <span className="material-symbols-outlined text-base">content_copy</span>
+              최근값 복사
+            </button>
             <button
               type="button"
               onClick={() => onOpenHistory?.(item.key)}
@@ -474,11 +491,11 @@ function HistoryModal({ open, onClose, title, rows, onDeleteSelected, onUpdateRo
   );
 }
 
-export default function OtherConsumablesPanel({ currentMileage, vehicleId, apiClient, onBack, hideLocalBack, userId }) {
+export default function OtherConsumablesPanel({ currentMileage, vehicleId, fuelType, apiClient, onBack, hideLocalBack, userId }) {
   const location = useLocation();
   const { showToast } = useToast();
   const [items, setItems] = useState(() =>
-    BASE_ITEMS.map((it) => ({
+    getVisibleBaseItems(fuelType).map((it) => ({
       key: it.key,
       kind: it.kind,
       editingName: false,
@@ -508,6 +525,9 @@ export default function OtherConsumablesPanel({ currentMileage, vehicleId, apiCl
 
   useEffect(() => {
     if (location.pathname !== "/other") return;
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    }
     setItems((prev) =>
       prev.map((row) =>
         row.lastOdo || row.lastDate || row.cost || row.memo
@@ -569,28 +589,30 @@ export default function OtherConsumablesPanel({ currentMileage, vehicleId, apiCl
           "get",
           `${apiPrefix}/consumables/items?vehicleId=${vehicleId}&category=${encodeURIComponent(CATEGORY)}`
         );
+        const rows = Array.isArray(data) ? data.filter((r) => supportsOtherItem(r.kind || r.label, fuelType)) : [];
         setItems(
-          data.map((r) => ({
+          (rows.length ? rows : getVisibleBaseItems(fuelType)).map((r) => ({
             id: r.id,
-            key: r.kind || r.label,
-            kind: r.kind || r.label,
-            mode: r.mode || "distance",
+            key: r.kind || r.label || r.key,
+            kind: r.kind || r.label || r.key,
+            editingName: false,
+            mode: r.mode || DEFAULTS[r.kind || r.label || r.key]?.defaultMode || "distance",
             lastOdo: "",
             lastDate: "",
-            cycleKm: r.cycleKm ?? "",
-            cycleMonths: r.cycleMonths ?? "",
+            cycleKm: r.cycleKm ?? DEFAULTS[r.kind || r.label || r.key]?.cycleKm ?? "",
+            cycleMonths: r.cycleMonths ?? DEFAULTS[r.kind || r.label || r.key]?.cycleMonths ?? "",
             cost: "",
             memo: "",
             history: [],
             flash: null,
-              }))
+          }))
         );
       } catch (e) {
         console.error("항목 불러오기 실패:", e);
       }
     };
     if (vehicleId) loadItems();
-  }, [vehicleId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [vehicleId, fuelType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const change = (key, field, value) => {
     setItems((prev) => prev.map((it) => (it.key === key ? { ...it, [field]: value } : it)));
@@ -762,12 +784,14 @@ export default function OtherConsumablesPanel({ currentMileage, vehicleId, apiCl
   // 계산용: 전체 이력 로우를 가져와 kind별 최대 odo와 최신 날짜를 미리 맵으로 준비
   const [maxOdoByKind, setMaxOdoByKind] = useState({});
   const [maxDateByKind, setMaxDateByKind] = useState({});
+  const [latestHistoryByKind, setLatestHistoryByKind] = useState({});
 
   const recomputeUsageStats = async (options = {}) => {
     const shouldReset = Boolean(options.resetInputs);
     if (!vehicleId) {
       setMaxOdoByKind({});
       setMaxDateByKind({});
+      setLatestHistoryByKind({});
       if (shouldReset) {
         setItems((prev) =>
           prev.map((row) =>
@@ -789,12 +813,14 @@ export default function OtherConsumablesPanel({ currentMileage, vehicleId, apiCl
       const rows = await request("get", `${apiPrefix}/consumables/search?${qs}`);
       const odoMap = {};
       const dateMap = {};
+      const latestMap = {};
       const kindsWithHistory = new Set();
       if (Array.isArray(rows)) {
         for (const r of rows) {
           const k = r.kind || r.label;
           if (!k) continue;
           kindsWithHistory.add(k);
+          if (!latestMap[k]) latestMap[k] = r;
           if (r.odo_km != null) {
             const val = Number(r.odo_km);
             if (Number.isFinite(val)) {
@@ -814,6 +840,7 @@ export default function OtherConsumablesPanel({ currentMileage, vehicleId, apiCl
       }
       setMaxOdoByKind(odoMap);
       setMaxDateByKind(dateMap);
+      setLatestHistoryByKind(latestMap);
       if (shouldReset) {
         setItems((prev) =>
           prev.map((row) =>
@@ -834,6 +861,30 @@ export default function OtherConsumablesPanel({ currentMileage, vehicleId, apiCl
     recomputeUsageStats();
     // eslint-disable-next-line react-hooks-exhaustive-deps
   }, [vehicleId, userId]);
+
+  const copyLatestValues = (key) => {
+    const target = items.find((row) => row.key === key);
+    if (!target) return;
+    const latest = latestHistoryByKind[target.kind];
+    if (!latest) {
+      showToast({ tone: "warning", message: "복사할 최근 기록이 없습니다." });
+      return;
+    }
+    setItems((prev) =>
+      prev.map((row) =>
+        row.key === key
+          ? {
+              ...row,
+              lastOdo: latest.odo_km != null ? String(latest.odo_km) : row.lastOdo,
+              lastDate: latest.date ? String(latest.date).slice(0, 10) : row.lastDate,
+              cost: latest.cost != null ? String(latest.cost) : row.cost,
+              memo: latest.memo ?? row.memo,
+            }
+          : row,
+      ),
+    );
+    showToast({ tone: "success", message: "최근 기록 값을 입력창에 복사했습니다." });
+  };
 
   const openAllHistory = async () => {
     const rows = await fetchAllHistory();
@@ -1002,16 +1053,17 @@ export default function OtherConsumablesPanel({ currentMileage, vehicleId, apiCl
                   await request("post", `${apiPrefix}/consumables/items/reset?vehicleId=${vehicleId}&category=${encodeURIComponent(CATEGORY)}`);
                   showToast({ tone: "success", message: "기본 항목으로 초기화되었습니다." });
                   const data = await request("get", `${apiPrefix}/consumables/items?vehicleId=${vehicleId}&category=${encodeURIComponent(CATEGORY)}`);
+                  const rows = Array.isArray(data) ? data.filter((r) => supportsOtherItem(r.kind || r.label, fuelType)) : [];
                   setItems(
-                    data.map((r) => ({
+                    (rows.length ? rows : getVisibleBaseItems(fuelType)).map((r) => ({
                       id: r.id,
-                      key: r.kind,
-                      kind: r.kind,
-                      mode: r.mode || "distance",
+                      key: r.kind || r.label || r.key,
+                      kind: r.kind || r.label || r.key,
+                      mode: r.mode || DEFAULTS[r.kind || r.label || r.key]?.defaultMode || "distance",
                       lastOdo: "",
                       lastDate: "",
-                      cycleKm: r.cycleKm ?? "",
-                      cycleMonths: r.cycleMonths ?? "",
+                      cycleKm: r.cycleKm ?? DEFAULTS[r.kind || r.label || r.key]?.cycleKm ?? "",
+                      cycleMonths: r.cycleMonths ?? DEFAULTS[r.kind || r.label || r.key]?.cycleMonths ?? "",
                       cost: "",
                       memo: "",
                       history: [],
@@ -1047,6 +1099,7 @@ export default function OtherConsumablesPanel({ currentMileage, vehicleId, apiCl
         onChange={change}
         onSaveHistory={saveHistory}
         onSaveConfig={saveConfig}
+        onCopyLatest={copyLatestValues}
         onOpenHistory={(key) => {
           setDetailModal({ open: false, itemKey: null });
           openHistory(key);

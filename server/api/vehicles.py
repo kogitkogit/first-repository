@@ -29,17 +29,32 @@ def add_vehicle(
         model=vehicle.model,
         year=vehicle.year,
         odo_km=vehicle.odo_km,
+        displacement_cc=vehicle.displacement_cc,
         owner_name=vehicle.owner_name,
     )
     db.add(new_vehicle)
     db.commit()
     db.refresh(new_vehicle)
-    return {"success": True, "vehicle": new_vehicle.id}
+    return {"success": True, "vehicle": new_vehicle.id, "id": new_vehicle.id}
 
 # 차량 조회
 @router.get("/list") 
 def list_vehicles(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)): 
     return db.query(Vehicle).filter(Vehicle.user_id == current_user.id).all()
+
+@router.delete("/{vehicle_id}")
+def delete_vehicle(
+    vehicle_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    vehicle = db.query(Vehicle).filter(Vehicle.id == vehicle_id, Vehicle.user_id == current_user.id).first()
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="차량을 찾을 수 없습니다.")
+
+    db.delete(vehicle)
+    db.commit()
+    return {"success": True}
 
 # 국산 제조사
 
@@ -87,7 +102,3 @@ def list_abroad_models(maker: str, db: Session = Depends(get_db)):
         for m in models
     ]
 
-@router.get("/debug/makers/raw")
-def debug_makers_raw(db: Session = Depends(get_db)):
-    rows = db.execute("SELECT id, name FROM car_makers").fetchall()
-    return [dict(r) for r in rows]

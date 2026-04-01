@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect } from "react";
 import api from "../api/client";
+import ConfirmDialog from "./ui/ConfirmDialog";
 
 const FUEL_TYPE_OPTIONS = [
   { value: "gasoline", label: "휘발유" },
@@ -21,7 +22,6 @@ export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, use
     model: "",
     year: "",
     displacement_cc: "",
-    odo_km: "",
     owner_name: "",
   });
   const [domesticMakers, setDomesticMakers] = useState([]);
@@ -29,6 +29,7 @@ export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, use
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [pendingDelete, setPendingDelete] = useState(null);
 
   useEffect(() => {
     api
@@ -86,14 +87,15 @@ export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, use
         model: form.model || null,
         year: form.year && !isNaN(form.year) ? Number(form.year) : null,
         displacement_cc: form.displacement_cc && !isNaN(form.displacement_cc) ? Number(form.displacement_cc) : null,
-        odo_km: form.odo_km && !isNaN(form.odo_km) ? Number(form.odo_km) : 0,
+        odo_km: 0,
         owner_name: form.owner_name || null,
         makerType: form.makerType || null,
         fuelType: form.fuelType || null,
         userId,
       };
 
-      await api.post("/vehicles/add", payload);
+      const response = await api.post("/vehicles/add", payload);
+      const createdVehicleId = response?.data?.id ?? response?.data?.vehicle ?? null;
       setOpen(false);
       setForm({
         plate_no: "",
@@ -103,10 +105,9 @@ export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, use
         model: "",
         year: "",
         displacement_cc: "",
-        odo_km: "",
         owner_name: "",
       });
-      onCreated?.();
+      onCreated?.(createdVehicleId);
     } catch (err) {
       console.error("차량 등록 오류:", err);
       setError("차량 등록 중 문제가 발생했습니다. 입력값을 확인해주세요.");
@@ -116,6 +117,20 @@ export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, use
   };
 
   const makerOptions = form.makerType === "domestic" ? domesticMakers : abroadMakers;
+
+  const deleteVehicle = async () => {
+    if (!pendingDelete) return;
+    setError("");
+    try {
+      await api.delete(`/vehicles/${pendingDelete.id}`);
+      setPendingDelete(null);
+      onCreated?.(null);
+    } catch (err) {
+      console.error("차량 삭제 오류:", err);
+      setError("차량 삭제 중 문제가 발생했습니다. 다시 시도해주세요.");
+      setPendingDelete(null);
+    }
+  };
 
   const renderList = () => {
     if (!vehicles?.length) {
@@ -159,7 +174,21 @@ export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, use
                   .join(" · ")}
               </p>
             </div>
-            <div className="flex items-center text-subtext-light">
+            <div className="flex items-center gap-1 text-subtext-light">
+              <button
+                type="button"
+                aria-label="차량 삭제"
+                className="flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-red-50 hover:text-red-600"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPendingDelete({
+                    id: v.id,
+                    label: v.plate_no || [v.maker, v.model].filter(Boolean).join(" ") || "이 차량",
+                  });
+                }}
+              >
+                <span className="material-symbols-outlined">delete</span>
+              </button>
               <span className="material-symbols-outlined">chevron_right</span>
             </div>
           </button>
@@ -268,6 +297,21 @@ export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, use
                   </select>
                 </label>
 
+                <label className="flex flex-col gap-2">
+                  <span className="text-sm font-medium">연료 타입</span>
+                  <select
+                    value={form.fuelType}
+                    onChange={(e) => setForm({ ...form, fuelType: e.target.value })}
+                    className="h-12 rounded-lg border border-border-light bg-surface-light px-3 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  >
+                    {FUEL_TYPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
                 <div className="grid grid-cols-2 gap-3">
                   <label className="flex flex-col gap-2">
                     <span className="text-sm font-medium">배기량 (cc)</span>
@@ -286,30 +330,6 @@ export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, use
                     />
                   </label>
                 </div>
-
-                <label className="flex flex-col gap-2">
-                  <span className="text-sm font-medium">연료 타입</span>
-                  <select
-                    value={form.fuelType}
-                    onChange={(e) => setForm({ ...form, fuelType: e.target.value })}
-                    className="h-12 rounded-lg border border-border-light bg-surface-light px-3 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  >
-                    {FUEL_TYPE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="flex flex-col gap-2">
-                  <span className="text-sm font-medium">현재 주행거리 (km)</span>
-                  <input
-                    value={form.odo_km}
-                    onChange={(e) => setForm({ ...form, odo_km: e.target.value })}
-                    className="h-12 rounded-lg border border-border-light bg-surface-light px-4 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  />
-                </label>
 
                 <label className="flex flex-col gap-2">
                   <span className="text-sm font-medium">차량 소유주</span>
@@ -343,6 +363,16 @@ export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, use
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title="차량 삭제"
+        description={pendingDelete ? `${pendingDelete.label} 차량을 삭제합니다. 삭제 후에는 복구할 수 없습니다.` : ""}
+        confirmLabel="삭제"
+        cancelLabel="취소"
+        onConfirm={deleteVehicle}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }

@@ -122,6 +122,12 @@ export default function LegalPanel({ vehicle }) {
   }, [vehicle]);
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    }
+  }, [vehicle?.id, viewTab]);
+
+  useEffect(() => {
     activeRecordIdRef.current = activeRecordId;
   }, [activeRecordId]);
 
@@ -358,9 +364,17 @@ export default function LegalPanel({ vehicle }) {
 
             <section className="grid grid-cols-2 gap-3">
               {summaryCards.map((card) => (
-                <div
+                <button
                   key={card.key}
-                  className="flex flex-col gap-3 rounded-2xl border border-border-light bg-white p-4 shadow-sm"
+                  type="button"
+                  onClick={() => {
+                    setViewTab("details");
+                    setTab(card.key);
+                    if (typeof window !== "undefined") {
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }
+                  }}
+                  className="flex flex-col gap-3 rounded-2xl border border-border-light bg-white p-4 text-left shadow-sm transition hover:border-primary/40"
                 >
                   <div className="flex items-center gap-2">
                     <span className={`flex h-9 w-9 items-center justify-center rounded-full ${card.color}`}>
@@ -372,7 +386,7 @@ export default function LegalPanel({ vehicle }) {
                     <p className="text-sm font-semibold text-text-light">{card.subtitle}</p>
                     <p className="text-xs text-subtext-light">{card.detail}</p>
                   </div>
-                </div>
+                </button>
               ))}
             </section>
           </>
