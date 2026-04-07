@@ -17,6 +17,18 @@ function toneClasses(tone) {
   }
 }
 
+function wrapperClasses(placement) {
+  return placement === "center"
+    ? "pointer-events-none fixed left-1/2 top-1/2 z-[100] flex -translate-x-1/2 -translate-y-1/2 items-center justify-center px-4"
+    : "pointer-events-none fixed inset-x-0 top-4 z-[100] flex flex-col items-center gap-2 px-4";
+}
+
+function cardClasses(placement) {
+  return placement === "center"
+    ? "pointer-events-auto flex min-w-[180px] max-w-[240px] items-center justify-center rounded-2xl border px-5 py-4 text-center shadow-2xl"
+    : "pointer-events-auto flex w-full max-w-md items-start justify-between gap-3 rounded-2xl border px-4 py-3 shadow-lg";
+}
+
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
 
@@ -25,10 +37,10 @@ export function ToastProvider({ children }) {
   }, []);
 
   const showToast = useCallback(
-    ({ message, tone = "info", duration = 2600 }) => {
+    ({ message, tone = "info", duration = 2600, placement = "top" }) => {
       if (!message) return;
       const id = nextToastId++;
-      setToasts((prev) => [...prev, { id, message, tone }]);
+      setToasts((prev) => [...prev, { id, message, tone, placement }]);
       if (duration > 0 && typeof window !== "undefined") {
         window.setTimeout(() => dismissToast(id), duration);
       }
@@ -47,24 +59,23 @@ export function ToastProvider({ children }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="pointer-events-none fixed inset-x-0 top-4 z-[100] flex flex-col items-center gap-2 px-4">
-        {toasts.map((toast) => (
-          <div
-            key={toast.id}
-            className={`pointer-events-auto flex w-full max-w-md items-start justify-between gap-3 rounded-2xl border px-4 py-3 shadow-lg ${toneClasses(toast.tone)}`}
-          >
+      {toasts.map((toast) => (
+        <div key={toast.id} className={wrapperClasses(toast.placement)}>
+          <div className={`${cardClasses(toast.placement)} ${toneClasses(toast.tone)}`}>
             <p className="text-sm font-medium">{toast.message}</p>
-            <button
-              type="button"
-              className="rounded-full p-1 text-current/70 transition hover:text-current"
-              onClick={() => dismissToast(toast.id)}
-              aria-label="토스트 닫기"
-            >
-              <span className="material-symbols-outlined text-lg">close</span>
-            </button>
+            {toast.placement === "center" ? null : (
+              <button
+                type="button"
+                className="rounded-full p-1 text-current/70 transition hover:text-current"
+                onClick={() => dismissToast(toast.id)}
+                aria-label="토스트 닫기"
+              >
+                <span className="material-symbols-outlined text-lg">close</span>
+              </button>
+            )}
           </div>
-        ))}
-      </div>
+        </div>
+      ))}
     </ToastContext.Provider>
   );
 }

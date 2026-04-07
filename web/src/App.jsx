@@ -80,6 +80,7 @@ export default function App() {
 
   const [token, setToken] = useState(null);
   const [username, setUsername] = useState("");
+  const [accountType, setAccountType] = useState("registered");
   const [userId, setUserId] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [vehicles, setVehicles] = useState([]);
@@ -99,9 +100,11 @@ export default function App() {
     const storedToken = localStorage.getItem("access_token");
     const storedUserId = localStorage.getItem("user_id");
     const storedUsername = localStorage.getItem("username") || "";
+    const storedAccountType = localStorage.getItem("account_type") || "registered";
     setToken(storedToken);
     setUserId(storedUserId ? Number(storedUserId) : null);
     setUsername(storedUsername);
+    setAccountType(storedAccountType);
     setAuthReady(true);
   }, []);
 
@@ -173,14 +176,16 @@ export default function App() {
     [fetchVehicles, selectedVehicle?.id, loadLegalSummary],
   );
 
-  const handleLoginSuccess = (t, u, id) => {
+  const handleLoginSuccess = (t, u, id, nextAccountType = "registered") => {
     setToken(t);
     setUsername(u);
+    setAccountType(nextAccountType);
     setUserId(id);
     if (typeof window !== "undefined") {
       localStorage.setItem("access_token", t);
       localStorage.setItem("user_id", String(id));
       localStorage.setItem("username", u ?? "");
+      localStorage.setItem("account_type", nextAccountType);
     }
     navigate("/");
     fetchVehicles().catch(() => {});
@@ -189,6 +194,7 @@ export default function App() {
   const handleLogout = () => {
     setToken(null);
     setUsername("");
+    setAccountType("registered");
     setUserId(null);
     setSelectedVehicle(null);
     setVehicles([]);
@@ -197,6 +203,7 @@ export default function App() {
       localStorage.removeItem("access_token");
       localStorage.removeItem("user_id");
       localStorage.removeItem("username");
+      localStorage.removeItem("account_type");
     }
     navigate("/");
   };
@@ -229,6 +236,15 @@ export default function App() {
   }, [username]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (accountType) {
+      localStorage.setItem("account_type", accountType);
+    } else {
+      localStorage.removeItem("account_type");
+    }
+  }, [accountType]);
+
+  useEffect(() => {
     if (!token) return;
     fetchVehicles().catch(() => {});
   }, [token, fetchVehicles]);
@@ -257,6 +273,8 @@ export default function App() {
       fetchVehicles={fetchVehicles}
       refreshVehicle={refreshVehicle}
       userId={userId}
+      username={username}
+      accountType={accountType}
       legalSummary={legalSummary}
       onLogout={handleLogout}
       costRefreshKey={costRefreshKey}
@@ -265,7 +283,7 @@ export default function App() {
   );
 }
 
-function AppShell({ selectedVehicle, setSelectedVehicle, vehicles, fetchVehicles, refreshVehicle, userId, legalSummary, onLogout, costRefreshKey, onCostRefresh }) {
+function AppShell({ selectedVehicle, setSelectedVehicle, vehicles, fetchVehicles, refreshVehicle, userId, username, accountType, legalSummary, onLogout, costRefreshKey, onCostRefresh }) {
   const navigate = useNavigate();
   const location = useLocation();
   const isDashboard = location.pathname === "/";
@@ -505,7 +523,7 @@ function AppShell({ selectedVehicle, setSelectedVehicle, vehicles, fetchVehicles
               path="/settings"
               element={
                 <PanelGuard vehicle={selectedVehicle}>
-                  <SettingsPanel userId={userId} vehicle={selectedVehicle} />
+                  <SettingsPanel userId={userId} vehicle={selectedVehicle} username={username} accountType={accountType} />
                 </PanelGuard>
               }
             />

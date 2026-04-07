@@ -178,7 +178,7 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
       });
   };
 
-  const formattedExpense = `${Number(expenseMonthly || 0).toLocaleString()} 원`
+  const formattedExpense = `${Number(expenseMonthly || 0).toLocaleString()} 원`;
   const energyMetric = (() => {
     if (vehicle?.fuelType === "ev") {
       return {
@@ -202,23 +202,37 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
   })();
   const metrics = useMemo(
     () => [
-      { key: "expense", label: "이번 달 집계 지출", icon: "payments", value: formattedExpense },
+      { key: "expense", label: "이번 달 지출 집계", icon: "payments", value: formattedExpense },
       { key: "distance", label: distanceLabel, icon: "trending_up", value: formattedDistance },
       { key: "fuel", ...energyMetric },
     ],
     [distanceLabel, formattedDistance, formattedExpense, energyMetric],
-  )
+  );
 
-  const vehicleTitle = vehicle?.plate_no || "차량 번호를 입력해주세요"
+  const vehicleTitle = vehicle?.plate_no || "차량 번호를 입력해주세요";
   const vehicleSubtitle = [vehicle?.maker, vehicle?.model, vehicle?.fuelType ? FUEL_TYPE_LABEL[vehicle.fuelType] || vehicle.fuelType : null, vehicle?.year]
     .filter(Boolean)
-    .join(" · ") || "차량 기본 정보를 입력해주세요"
-  const primaryOdo = currentOdo ?? vehicle?.odo_km ?? null
+    .join(" · ") || "차량 기본 정보를 입력해주세요";
+  const primaryOdo = currentOdo ?? vehicle?.odo_km ?? null;
   const currentMileageLabel =
-    primaryOdo != null ? `${Number(primaryOdo).toLocaleString()} km` : "주행거리 정보 없음"
+    primaryOdo != null ? `${Number(primaryOdo).toLocaleString()} km` : "주행거리 정보 없음";
 
   const dueLoading = dueSummary.loading || !odoReady;
   const dueCount = dueSummary.items.filter((item) => item.tone === "danger" || item.tone === "warn").length;
+
+  const handleMetricClick = (metricKey) => {
+    if (metricKey === "expense") {
+      navigate("/costs");
+      return;
+    }
+    if (metricKey === "distance") {
+      navigate("/driving");
+      return;
+    }
+    if (metricKey === "fuel") {
+      navigate("/fuel");
+    }
+  };
 
   return (
     <div className="space-y-6 px-4 py-6">
@@ -334,9 +348,11 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
       </section>
       <section className="grid grid-cols-3 gap-3">
           {metrics.map((metric) => (
-            <div
+            <button
               key={metric.key}
-              className="flex min-w-0 flex-col items-center gap-1 rounded-2xl border border-border-light bg-primary/5 p-3 text-left shadow-card"
+              type="button"
+              onClick={() => handleMetricClick(metric.key)}
+              className="flex min-w-0 flex-col items-center gap-1 rounded-2xl border border-border-light bg-primary/5 p-3 text-left shadow-card transition hover:border-primary/40 hover:bg-primary/10"
             >
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-xl text-primary">
@@ -349,7 +365,7 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
               <span className="text-sm font-bold text-text-light">
                 {metric.value}
               </span>
-            </div>
+            </button>
           ))}
         </section>
 

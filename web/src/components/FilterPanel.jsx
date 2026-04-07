@@ -1,6 +1,6 @@
 
 ﻿import React, { useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useToast } from "./ui/ToastProvider";
 
 const CATEGORY = "필터";
@@ -100,6 +100,13 @@ const toneProgressClass = (tone) => {
 function ItemCard({ item, state, onOpenDetail, onDelete, currentMileage, alertsEnabled = false, dueMessage, lastHistoryValue, lastHistoryDate }) {
   const mode = state.mode || "distance";
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const effectiveHistoryValue =
+    lastHistoryValue != null && lastHistoryValue !== ""
+      ? lastHistoryValue
+      : mode === "distance"
+      ? state.lastOdo
+      : state.lastDate;
+  const effectiveHistoryDate = lastHistoryDate || (isYmd(state.lastDate) ? state.lastDate : null);
 
   const statusData = useMemo(() => {
     const parseOdoFromHistory = (v) => {
@@ -120,7 +127,7 @@ function ItemCard({ item, state, onOpenDetail, onDelete, currentMileage, alertsE
     };
 
     if (mode === "distance") {
-      const historyOdo = parseOdoFromHistory(lastHistoryValue);
+      const historyOdo = parseOdoFromHistory(effectiveHistoryValue);
       const baseOdo = historyOdo;
       const cycleValue = Number(state.cycleKm || 0);
       if (cycleValue <= 0) {
@@ -153,7 +160,7 @@ function ItemCard({ item, state, onOpenDetail, onDelete, currentMileage, alertsE
     }
 
     if (mode === "time") {
-      const baseDate = parseDateFromHistory(lastHistoryValue);
+      const baseDate = parseDateFromHistory(effectiveHistoryValue);
       if (baseDate && state.cycleMonths) {
         const last = new Date(baseDate);
         const now = new Date();
@@ -173,7 +180,7 @@ function ItemCard({ item, state, onOpenDetail, onDelete, currentMileage, alertsE
     }
 
     return { tone: "muted", message: "교체 정보를 입력해주세요.", showProgress: false };
-  }, [mode, currentMileage, state.cycleKm, state.cycleMonths, alertsEnabled, dueMessage, lastHistoryValue]);
+  }, [mode, currentMileage, state.cycleKm, state.cycleMonths, alertsEnabled, dueMessage, effectiveHistoryValue]);
 
     return (
       <div className="relative w-full rounded-2xl border border-border-light bg-surface-light p-4 text-left shadow-card">
@@ -196,7 +203,7 @@ function ItemCard({ item, state, onOpenDetail, onDelete, currentMileage, alertsE
             </div>
             <div className="flex items-center gap-2">
               <span className={`rounded-full bg-border-light/70 px-2 py-0.5 text-[11px] font-semibold ${toneTextClass(statusData.tone)}`}>
-                {statusData.tone === "danger" ? "교체 필요" : statusData.tone === "warn" ? "교체 임박" : statusData.tone === "ok" ? "정상" : "정보 없음"}
+                {statusData.tone === "danger" ? "교체 필요" : statusData.tone === "warn" ? "교체 임박" : statusData.tone === "ok" ? "정상" : "작성 필요"}
               </span>
               <button
                 type="button"
@@ -212,7 +219,7 @@ function ItemCard({ item, state, onOpenDetail, onDelete, currentMileage, alertsE
             </div>
           </div>
           <p className="mt-2 text-xs text-subtext-light">
-            최종 교체일: {formatYmd(lastHistoryDate || (isYmd(lastHistoryValue) ? lastHistoryValue : null))}
+            최종 교체일: {formatYmd(effectiveHistoryDate || (isYmd(effectiveHistoryValue) ? effectiveHistoryValue : null))}
           </p>
           {statusData.showAlert ? (
             <div className="mt-2 rounded-md bg-yellow-100 px-3 py-2 text-[11px] font-semibold text-yellow-800">{dueMessage}</div>
@@ -493,6 +500,7 @@ function HistoryModal({ open, onClose, title, rows, onDeleteSelected, onUpdateRo
 
 export default function FilterPanel({ currentMileage, vehicleId, fuelType, apiClient, onBack, hideLocalBack, userId }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const { showToast } = useToast();
   const [items, setItems] = useState(() =>
     getVisibleBaseItems(fuelType).map((it) => ({
@@ -528,13 +536,6 @@ export default function FilterPanel({ currentMileage, vehicleId, fuelType, apiCl
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     }
-    setItems((prev) =>
-      prev.map((row) =>
-        row.lastOdo || row.lastDate || row.cost || row.memo
-          ? { ...row, lastOdo: "", lastDate: "", cost: "", memo: "" }
-          : row
-      )
-    );
   }, [location.pathname]);
 
   const [allSort, setAllSort] = useState("date"); // date | odo | id
@@ -597,8 +598,8 @@ export default function FilterPanel({ currentMileage, vehicleId, fuelType, apiCl
             kind: r.kind || r.label || r.key,
             editingName: false,
             mode: r.mode || DEFAULTS[r.kind || r.label || r.key]?.defaultMode || "distance",
-            lastOdo: "",
-            lastDate: "",
+            lastOdo: r.lastOdo ?? "",
+            lastDate: r.lastDate ?? "",
             cycleKm: r.cycleKm ?? DEFAULTS[r.kind || r.label || r.key]?.cycleKm ?? "",
             cycleMonths: r.cycleMonths ?? DEFAULTS[r.kind || r.label || r.key]?.cycleMonths ?? "",
             cost: "",
@@ -613,6 +614,15 @@ export default function FilterPanel({ currentMileage, vehicleId, fuelType, apiCl
     };
     if (vehicleId) loadItems();
   }, [vehicleId, fuelType]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const focusKind = location.state?.focusConsumableKind;
+    if (!focusKind || !items.length) return;
+    const target = items.find((item) => String(item.kind).trim() === String(focusKind).trim());
+    if (!target) return;
+    setDetailModal({ open: true, itemKey: target.key });
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [items, location.pathname, location.state, navigate]);
 
   const change = (key, field, value) => {
     setItems((prev) => prev.map((it) => (it.key === key ? { ...it, [field]: value } : it)));
@@ -693,11 +703,13 @@ export default function FilterPanel({ currentMileage, vehicleId, fuelType, apiCl
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("consumables:changed"));
       }
+      showToast({ tone: "success", message: "저장되었습니다.", placement: "center", duration: 1800 });
     } catch (e) {
       const msg = e?.message ? String(e.message) : "저장 실패";
       setItems((prev) =>
         prev.map((row) => (row.key === key ? { ...row, flash: "err:" + msg } : row))
       );
+      showToast({ tone: "error", message: "저장에 실패했습니다." });
     }
   };
 

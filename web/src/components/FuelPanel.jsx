@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-
 import api from "../api/client";
 import ConfirmDialog from "./ui/ConfirmDialog";
 import { useToast } from "./ui/ToastProvider";
@@ -44,7 +43,7 @@ function defaultFuelForm(vehicle) {
     liters: "",
     price_total: "",
     odo_km: vehicle?.odo_km ? String(vehicle.odo_km) : "",
-    is_full: true,
+    is_full: false,
   };
 }
 
@@ -245,6 +244,7 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
     const price = Number(fuelForm.price_total);
     return liters > 0 && price > 0 ? Math.round(price / liters) : null;
   }, [fuelForm]);
+
   const chargePreview = useMemo(() => {
     const energy = Number(chargeForm.energy_kwh);
     const price = Number(chargeForm.price_total);
@@ -254,8 +254,12 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
   async function refresh(type) {
     if (!vehicle) return;
     const requests = [];
-    if (type === "fuel" || type === "all") requests.push(api.get("/fuel/list", { params: { vehicleId: vehicle.id } }), api.get("/fuel/stats", { params: { vehicleId: vehicle.id } }));
-    if (type === "charge" || type === "all") requests.push(api.get("/charging/list", { params: { vehicleId: vehicle.id } }), api.get("/charging/stats", { params: { vehicleId: vehicle.id } }));
+    if (type === "fuel" || type === "all") {
+      requests.push(api.get("/fuel/list", { params: { vehicleId: vehicle.id } }), api.get("/fuel/stats", { params: { vehicleId: vehicle.id } }));
+    }
+    if (type === "charge" || type === "all") {
+      requests.push(api.get("/charging/list", { params: { vehicleId: vehicle.id } }), api.get("/charging/stats", { params: { vehicleId: vehicle.id } }));
+    }
     const result = await Promise.all(requests);
     let i = 0;
     if (type === "fuel" || type === "all") {
@@ -273,13 +277,20 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
       showToast({ tone: "warning", message: "모든 필수 항목을 입력해주세요." });
       return;
     }
-    const payload = { vehicle_id: vehicle.id, date: fuelForm.date, liters: Number(fuelForm.liters), price_total: Number(fuelForm.price_total), odo_km: Number(fuelForm.odo_km), is_full: !!fuelForm.is_full };
+    const payload = {
+      vehicle_id: vehicle.id,
+      date: fuelForm.date,
+      liters: Number(fuelForm.liters),
+      price_total: Number(fuelForm.price_total),
+      odo_km: Number(fuelForm.odo_km),
+      is_full: !!fuelForm.is_full,
+    };
     await (formState.mode === "edit" ? api.put(`/fuel/${formState.id}`, payload) : api.post("/fuel/add", payload));
     setFormState({ open: false, type: "fuel", mode: "create", id: null });
     setFuelForm(defaultFuelForm(vehicle));
     await refresh("fuel");
     onCostDataChanged?.();
-    showToast({ tone: "success", message: "주유 기록을 저장했습니다." });
+    showToast({ tone: "success", message: "저장되었습니다.", placement: "center", duration: 1800 });
   }
 
   async function saveCharge() {
@@ -302,7 +313,7 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
     setChargeForm(defaultChargeForm(vehicle));
     await refresh("charge");
     onCostDataChanged?.();
-    showToast({ tone: "success", message: "충전 기록을 저장했습니다." });
+    showToast({ tone: "success", message: "저장되었습니다.", placement: "center", duration: 1800 });
   }
 
   async function deleteSelected() {
@@ -349,7 +360,8 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
             <p className="text-sm text-subtext-light">{mode === "charge" ? "전기차 충전 기록과 에너지 비용을 관리합니다." : mode === "both" ? "주유와 충전을 차량 타입에 맞게 함께 관리합니다." : "주유 기록과 연비 흐름을 빠르게 확인하세요."}</p>
           </div>
           <button type="button" className="flex items-center justify-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90" onClick={() => setFormState({ open: true, type: tab, mode: "create", id: null })}>
-            <span className="material-symbols-outlined text-base">add</span>{tab === "charge" ? "충전 기록 추가" : "주유 기록 추가"}
+            <span className="material-symbols-outlined text-base">add</span>
+            {tab === "charge" ? "충전 기록 추가" : "주유 기록 추가"}
           </button>
         </div>
         {mode === "both" ? (
@@ -417,15 +429,15 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
           <input type="number" className={INPUT_CLASS} placeholder="주행거리 (km)" value={chargeForm.odo_km} onChange={(e) => setChargeForm((prev) => ({ ...prev, odo_km: e.target.value }))} />
           <select className={INPUT_CLASS} value={chargeForm.charge_type} onChange={(e) => setChargeForm((prev) => ({ ...prev, charge_type: e.target.value }))}><option value="slow">완속 충전</option><option value="fast">급속 충전</option></select>
           <div className="grid grid-cols-2 gap-3">
-            <input type="number" className={INPUT_CLASS} placeholder="충전 전 배터리 (%)" value={chargeForm.battery_before_percent} onChange={(e) => setChargeForm((prev) => ({ ...prev, battery_before_percent: e.target.value }))} />
-            <input type="number" className={INPUT_CLASS} placeholder="충전 후 배터리 (%)" value={chargeForm.battery_after_percent} onChange={(e) => setChargeForm((prev) => ({ ...prev, battery_after_percent: e.target.value }))} />
+            <input type="number" className={INPUT_CLASS} placeholder="충전 전 배터리(%)" value={chargeForm.battery_before_percent} onChange={(e) => setChargeForm((prev) => ({ ...prev, battery_before_percent: e.target.value }))} />
+            <input type="number" className={INPUT_CLASS} placeholder="충전 후 배터리(%)" value={chargeForm.battery_after_percent} onChange={(e) => setChargeForm((prev) => ({ ...prev, battery_after_percent: e.target.value }))} />
           </div>
           <div className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-primary">{chargePreview ? `예상 kWh당 비용 ${money(chargePreview)}` : "충전량과 총 금액을 입력하면 kWh당 비용을 보여줍니다."}</div>
         </Modal>
       ) : null}
 
       {selected?.type === "fuel" ? <DetailSheet title="주유 기록 상세" onClose={() => setSelected(null)} onEdit={() => { openEdit(selected.record); setSelected(null); }} onDelete={() => setPendingDelete({ type: "fuel", id: selected.record.id })} rows={[{ label: "주유 날짜", value: selected.record.date }, { label: "주유량", value: `${Number(selected.record.liters || 0).toFixed(1)}L` }, { label: "총 금액", value: money(selected.record.price_total) }, { label: "주행거리", value: `${Number(selected.record.odo_km || 0).toLocaleString()}km` }, { label: "주유 방식", value: selected.record.is_full ? "가득 주유" : "부분 주유" }]} /> : null}
-      {selected?.type === "charge" ? <DetailSheet title="충전 기록 상세" onClose={() => setSelected(null)} onEdit={() => { openEdit(selected.record); setSelected(null); }} onDelete={() => setPendingDelete({ type: "charging", id: selected.record.id })} rows={[{ label: "충전 날짜", value: selected.record.date }, { label: "충전량", value: `${Number(selected.record.energy_kwh || 0).toFixed(1)}kWh` }, { label: "총 금액", value: money(selected.record.price_total) }, { label: "주행거리", value: `${Number(selected.record.odo_km || 0).toLocaleString()}km` }, { label: "충전 방식", value: selected.record.charge_type === "fast" ? "급속" : "완속" }, { label: "배터리", value: `${selected.record.battery_before_percent ?? "-"}% → ${selected.record.battery_after_percent ?? "-"}%` }]} /> : null}
+      {selected?.type === "charge" ? <DetailSheet title="충전 기록 상세" onClose={() => setSelected(null)} onEdit={() => { openEdit(selected.record); setSelected(null); }} onDelete={() => setPendingDelete({ type: "charging", id: selected.record.id })} rows={[{ label: "충전 날짜", value: selected.record.date }, { label: "충전량", value: `${Number(selected.record.energy_kwh || 0).toFixed(1)}kWh` }, { label: "총 금액", value: money(selected.record.price_total) }, { label: "주행거리", value: `${Number(selected.record.odo_km || 0).toLocaleString()}km` }, { label: "충전 방식", value: selected.record.charge_type === "fast" ? "급속" : "완속" }, { label: "배터리", value: `${selected.record.battery_before_percent ?? "-"}% -> ${selected.record.battery_after_percent ?? "-"}%` }]} /> : null}
 
       <ConfirmDialog open={Boolean(pendingDelete)} title={pendingDelete?.type === "charging" ? "충전 기록 삭제" : "주유 기록 삭제"} description="삭제 후에는 복구할 수 없습니다." confirmLabel="삭제" cancelLabel="취소" onConfirm={() => deleteSelected().catch((error) => { console.error(error); showToast({ tone: "error", message: "기록을 삭제하지 못했습니다." }); })} onCancel={() => setPendingDelete(null)} />
     </div>

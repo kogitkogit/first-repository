@@ -19,9 +19,9 @@ const RANGE_FILTERS = [
 
 const SORT_OPTIONS = [
   { key: "recent", label: "최신순" },
-  { key: "oldest", label: "오래된 순" },
-  { key: "cost-desc", label: "비용 높은 순" },
-  { key: "cost-asc", label: "비용 낮은 순" },
+  { key: "oldest", label: "오래된순" },
+  { key: "cost-desc", label: "비용 높은순" },
+  { key: "cost-asc", label: "비용 낮은순" },
 ];
 
 const PRESET_SERVICES = [
@@ -298,7 +298,7 @@ export default function MaintenancePanel({ vehicle }) {
       setFormModal({ open: false, mode: "create" });
       setDetailSheet({ open: false, record: null });
       await Promise.all([loadRecords(), loadOverview()]);
-      showToast({ tone: "success", message: "정비 기록을 저장했습니다." });
+      showToast({ tone: "success", message: "저장되었습니다.", placement: "center", duration: 1800 });
     } catch (error) {
       console.error("정비 기록 저장 오류", error);
       showToast({ tone: "error", message: "정비 기록을 저장하지 못했습니다." });

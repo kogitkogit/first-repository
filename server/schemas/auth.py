@@ -16,8 +16,11 @@ class ResetPasswordIn(BaseModel):
 
 class DeleteAccountIn(BaseModel):
     current_password: str
-    
+
+
 class TokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user_id: int
+    username: str
+    account_type: str

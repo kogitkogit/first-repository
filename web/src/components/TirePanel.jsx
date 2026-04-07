@@ -222,6 +222,7 @@ export default function TirePanel({ vehicle }) {
       });
       await fetchSummary();
       setMetaEditing(false);
+      showToast({ tone: "success", message: "저장되었습니다.", placement: "center", duration: 1800 });
     } catch (error) {
       console.error("Failed to update tire", error);
       showToast({ tone: "error", message: "타이어 정보를 저장하지 못했습니다." });
@@ -249,6 +250,7 @@ export default function TirePanel({ vehicle }) {
       await Promise.all([fetchSummary(), fetchHistory(selected)]);
       setMeasurementModalOpen(false);
       setMeasurementForm(emptyMeasurementForm());
+      showToast({ tone: "success", message: "저장되었습니다.", placement: "center", duration: 1800 });
     } catch (error) {
       console.error("Failed to save measurement", error);
       showToast({ tone: "error", message: "계측값을 저장하지 못했습니다." });
@@ -301,6 +303,7 @@ export default function TirePanel({ vehicle }) {
       }
       setServiceModal({ open: false, type: null });
       setServiceForm(emptyServiceForm(vehicle, "rotation"));
+      showToast({ tone: "success", message: "저장되었습니다.", placement: "center", duration: 1800 });
     } catch (error) {
       console.error("Failed to save service", error);
       showToast({ tone: "error", message: "서비스 기록을 저장하지 못했습니다." });
