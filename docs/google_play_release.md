@@ -1,6 +1,6 @@
 ﻿# 구글 플레이스토어 출시 절차 (Capacitor 기반)
 
-> 대상: 현재 `web` 폴더(React + Vite)와 `server`(FastAPI)를 사용하는 CarCare 프로젝트를 **Capacitor로 Android 앱 패키징**하여 Google Play Console에 출시하는 절차입니다.
+> 대상: 현재 `web` 폴더(React + Vite)와 `server`(FastAPI)를 사용하는 내차수첩 프로젝트를 **Capacitor로 Android 앱 패키징**하여 Google Play Console에 출시하는 절차입니다.
 > 날짜 기준: 2026-01-23
 
 ---
@@ -70,7 +70,7 @@ sudo apt install nginx
 2) Nginx 사이트 설정 파일 생성
 
 ```bash
-sudo nano /etc/nginx/sites-available/carcare-api
+sudo nano /etc/nginx/sites-available/내차수첩-api
 ```
 
 3) 아래 내용을 입력하고 저장합니다.
@@ -93,7 +93,7 @@ server {
 4) 심볼릭 링크 활성화 및 재시작
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/carcare-api /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/내차수첩-api /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl restart nginx
 ```
@@ -184,7 +184,7 @@ rg -n "VITE_API_BASE_URL|api.yourdomain.com" dist -S
 `web/capacitor.config.json`
 
 - `appId`: 앱 고유 패키지명 (예: `com.carcare.app`)
-- `appName`: 앱 표시 이름 (예: `CarCare`)
+- `appName`: 앱 표시 이름 (예: `내차수첩`)
 - `webDir`: `dist`
 
 ---
@@ -261,8 +261,8 @@ web/android/app/src/main/res/drawable
 
 ```bash
 keytool -genkeypair -v \
-  -keystore carcare-release.keystore \
-  -alias carcare \
+  -keystore 내차수첩-release.keystore \
+  -alias 내차수첩 \
   -keyalg RSA -keysize 2048 -validity 10000
 ```
 
@@ -281,9 +281,9 @@ keytool -genkeypair -v \
 android {
     signingConfigs {
         release {
-            storeFile file('carcare-release.keystore')
+            storeFile file('내차수첩-release.keystore')
             storePassword '비밀번호'
-            keyAlias 'carcare'
+            keyAlias '내차수첩'
             keyPassword '비밀번호'
         }
     }
@@ -419,4 +419,6 @@ Google 정책상 필수로 아래 항목을 입력해야 합니다.
 
 - Google Play Console: https://play.google.com/console
 - Capacitor 공식 문서: https://capacitorjs.com/docs
+
+
 

@@ -29,7 +29,6 @@ def add_vehicle(
         model=vehicle.model,
         year=vehicle.year,
         odo_km=vehicle.odo_km,
-        displacement_cc=vehicle.displacement_cc,
         owner_name=vehicle.owner_name,
     )
     db.add(new_vehicle)

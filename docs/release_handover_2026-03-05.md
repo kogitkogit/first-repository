@@ -1,4 +1,4 @@
-﻿# CarCare 배포 핸드오버 (최신화: 2026-03-06)
+﻿# 내차수첩 배포 핸드오버 (최신화: 2026-03-06)
 
 ## 1) 현재 전체 상태 요약
 - 백엔드 운영: 완료 (Render + Supabase 연동, 헬스체크/keepalive 동작 확인)
@@ -30,7 +30,7 @@
   - 이유: `signingConfigs.release` 참조 시점 오류 해결
 - `web/android/keystore.properties.example`
   - `storeFile` 경로를 모듈 기준으로 수정
-  - 변경: `../../keystore/carcare-release.keystore`
+  - 변경: `../../keystore/내차수첩-release.keystore`
 - `.gitignore`
   - `web/android/keystore.properties`
   - `web/keystore/`
@@ -96,3 +96,4 @@ cd android
 - 현재 로컬 키스토어는 테스트용으로 생성되어 있음
 - Play 프로덕션 업로드 전 운영용 서명키/비밀번호 체계로 교체 권장
 - 서명키 분실 방지: 오프라인 백업 + 접근권한 최소화 필요
+

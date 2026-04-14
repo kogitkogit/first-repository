@@ -1,7 +1,10 @@
 ﻿import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import api from "../api/client";
 import PanelTabs from "./PanelTabs";
 import { useToast } from "./ui/ToastProvider";
+import ConfirmDialog from "./ui/ConfirmDialog";
+import { DATE_ERROR_MESSAGE, validatePastOrToday } from "../utils/dateValidation";
 
 const POSITIONS = [
   { key: "front_left", label: "전륜(좌)", short: "FL" },
@@ -108,6 +111,8 @@ function isTireMissingInfo(item) {
 
 export default function TirePanel({ vehicle }) {
   const { showToast } = useToast();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [summary, setSummary] = useState(null);
   const [selected, setSelected] = useState(POSITIONS[0].key);
   const [history, setHistory] = useState({ measurements: [], services: [] });
@@ -115,12 +120,15 @@ export default function TirePanel({ vehicle }) {
   const [metaEditing, setMetaEditing] = useState(false);
   const [measurementForm, setMeasurementForm] = useState(() => emptyMeasurementForm());
   const [measurementModalOpen, setMeasurementModalOpen] = useState(false);
+  const [editingMeasurementId, setEditingMeasurementId] = useState(null);
   const [serviceModal, setServiceModal] = useState({ open: false, type: null });
   const [serviceForm, setServiceForm] = useState(() => emptyServiceForm(vehicle, "rotation"));
   const [serviceLog, setServiceLog] = useState([]);
   const [viewTab, setViewTab] = useState("summary");
   const [historyTab, setHistoryTab] = useState("measurements");
   const [loading, setLoading] = useState(false);
+  const [pendingMeasurementDeleteId, setPendingMeasurementDeleteId] = useState(null);
+  const [pendingMetaReset, setPendingMetaReset] = useState(false);
 
   const selectedSummary = useMemo(() => {
     if (!summary) return null;
@@ -128,7 +136,7 @@ export default function TirePanel({ vehicle }) {
   }, [summary, selected]);
 
   const selectedLabel = useMemo(() => {
-    if (selectedSummary?.position_label) return selectedSummary.position_label;
+    if (selectedSummary?.position_label) return localizeTirePosition(selectedSummary.position_label);
     return POSITIONS.find((item) => item.key === selected)?.label || "선택된 타이어 없음";
   }, [selected, selectedSummary?.position_label]);
 
@@ -142,14 +150,25 @@ export default function TirePanel({ vehicle }) {
   }, [vehicle?.id]);
 
   useEffect(() => {
+    if (!vehicle) return;
+    fetchHistory(selected);
+  }, [selected, vehicle?.id]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     window.scrollTo({ top: 0, behavior: "auto" });
   }, [vehicle?.id, viewTab]);
 
+  
   useEffect(() => {
-    if (!vehicle) return;
-    fetchHistory(selected);
-  }, [selected, vehicle?.id]);
+    const focusPosition = location.state?.focusTirePosition;
+    if (!focusPosition) return;
+    setSelected(focusPosition);
+    if (location.state?.focusTireDetail) {
+      setViewTab("detail");
+    }
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [location.pathname, location.state, navigate]);
 
   useEffect(() => {
     if (selectedSummary && !metaEditing) {
@@ -206,6 +225,10 @@ export default function TirePanel({ vehicle }) {
 
   const handleMetaSave = async () => {
     if (!vehicle) return;
+    if (metaForm.installed_at && !validatePastOrToday(metaForm.installed_at)) {
+      showToast({ tone: "warning", message: DATE_ERROR_MESSAGE, placement: "center", duration: 1800 });
+      return;
+    }
     setLoading(true);
     try {
       const payload = {
@@ -233,6 +256,10 @@ export default function TirePanel({ vehicle }) {
 
   const handleMeasurementSave = async () => {
     if (!vehicle) return;
+    if (!measurementForm.measured_at || !validatePastOrToday(measurementForm.measured_at)) {
+      showToast({ tone: "warning", message: DATE_ERROR_MESSAGE, placement: "center", duration: 1800 });
+      return;
+    }
     setLoading(true);
     try {
       const measuredAt = measurementForm.measured_at
@@ -244,11 +271,18 @@ export default function TirePanel({ vehicle }) {
         tread_depth_mm: toFloat(measurementForm.tread_depth_mm),
         temperature_c: toFloat(measurementForm.temperature_c),
       };
-      await api.post(`/tires/${selected}/measurements`, payload, {
-        params: { vehicleId: vehicle.id },
-      });
+      if (editingMeasurementId) {
+        await api.put(`/tires/${selected}/measurements/${editingMeasurementId}`, payload, {
+          params: { vehicleId: vehicle.id },
+        });
+      } else {
+        await api.post(`/tires/${selected}/measurements`, payload, {
+          params: { vehicleId: vehicle.id },
+        });
+      }
       await Promise.all([fetchSummary(), fetchHistory(selected)]);
       setMeasurementModalOpen(false);
+      setEditingMeasurementId(null);
       setMeasurementForm(emptyMeasurementForm());
       showToast({ tone: "success", message: "저장되었습니다.", placement: "center", duration: 1800 });
     } catch (error) {
@@ -268,6 +302,10 @@ export default function TirePanel({ vehicle }) {
     if (!vehicle || !serviceModal.type) return;
     if (!serviceForm.performed_at) {
       showToast({ tone: "warning", message: "서비스 날짜를 입력해주세요." });
+      return;
+    }
+    if (!validatePastOrToday(serviceForm.performed_at)) {
+      showToast({ tone: "warning", message: DATE_ERROR_MESSAGE, placement: "center", duration: 1800 });
       return;
     }
     setLoading(true);
@@ -307,6 +345,54 @@ export default function TirePanel({ vehicle }) {
     } catch (error) {
       console.error("Failed to save service", error);
       showToast({ tone: "error", message: "서비스 기록을 저장하지 못했습니다." });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleMeasurementEdit = (row) => {
+    setMeasurementForm({
+      measured_at: row?.measured_at ? toDateTimeLocalString(new Date(row.measured_at)) : toDateTimeLocalString(new Date()),
+      pressure_kpa: row?.pressure_kpa ?? "",
+      tread_depth_mm: row?.tread_depth_mm ?? "",
+      temperature_c: row?.temperature_c ?? "",
+    });
+    setEditingMeasurementId(row?.id ?? null);
+    setMeasurementModalOpen(true);
+  };
+
+  const handleMeasurementDelete = async () => {
+    if (!vehicle || !pendingMeasurementDeleteId) return;
+    setLoading(true);
+    try {
+      await api.delete(`/tires/${selected}/measurements/${pendingMeasurementDeleteId}`, {
+        params: { vehicleId: vehicle.id },
+      });
+      await Promise.all([fetchSummary(), fetchHistory(selected)]);
+      setPendingMeasurementDeleteId(null);
+      showToast({ tone: "success", message: "삭제되었습니다.", placement: "center", duration: 1800 });
+    } catch (error) {
+      console.error("Failed to delete measurement", error);
+      showToast({ tone: "error", message: "계측값을 삭제하지 못했습니다." });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleMetaReset = async () => {
+    if (!vehicle) return;
+    setLoading(true);
+    try {
+      await api.delete(`/tires/${selected}/meta`, {
+        params: { vehicleId: vehicle.id },
+      });
+      await Promise.all([fetchSummary(), fetchHistory(selected)]);
+      setMetaEditing(false);
+      setPendingMetaReset(false);
+      showToast({ tone: "success", message: "초기화되었습니다.", placement: "center", duration: 1800 });
+    } catch (error) {
+      console.error("Failed to reset tire metadata", error);
+      showToast({ tone: "error", message: "타이어 정보를 초기화하지 못했습니다." });
     } finally {
       setLoading(false);
     }
@@ -361,7 +447,7 @@ export default function TirePanel({ vehicle }) {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs uppercase text-subtext-light">선택된 타이어</p>
-                  <h2 className="text-lg font-semibold text-text-light">{selectedSummary?.position_label ?? "타이어"}</h2>
+                  <h2 className="text-lg font-semibold text-text-light">{selectedLabel || "타이어"}</h2>
                 </div>
                 <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_BADGE[selectedStatusKey]}`}>
                   {STATUS_LABEL[selectedStatusKey]}
@@ -427,6 +513,7 @@ export default function TirePanel({ vehicle }) {
                   className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary/90"
                   onClick={() => {
                     setMeasurementForm(emptyMeasurementForm());
+                    setEditingMeasurementId(null);
                     setMeasurementModalOpen(true);
                   }}
                 >
@@ -472,6 +559,24 @@ export default function TirePanel({ vehicle }) {
                       v
                     </span>
                   </div>
+                  {!metaEditing ? (
+                    <>
+                      <button
+                        type="button"
+                        className="rounded-full border border-border-light bg-background-light px-3 py-1 text-xs font-semibold text-subtext-light transition hover:text-primary"
+                        onClick={() => setMetaEditing(true)}
+                      >
+                        입력/수정
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-100"
+                        onClick={() => setPendingMetaReset(true)}
+                      >
+                        초기화
+                      </button>
+                    </>
+                  ) : null}
                 </div>
               </header>
 
@@ -491,7 +596,7 @@ export default function TirePanel({ vehicle }) {
                       <p className="font-semibold">알림</p>
                       <ul className="mt-1 list-disc space-y-1 pl-5">
                         {selectedSummary.warnings.map((warning, idx) => (
-                          <li key={idx}>{warning}</li>
+                          <li key={idx}>{localizeTireWarning(warning)}</li>
                         ))}
                       </ul>
                     </div>
@@ -521,7 +626,19 @@ export default function TirePanel({ vehicle }) {
                       className={`${SECONDARY_BUTTON_CLASS} min-w-[92px] whitespace-nowrap`}
                       onClick={() => {
                         setMetaEditing(false);
-                        setMetaForm(emptyMetaForm());
+                        if (selectedSummary) {
+                          setMetaForm({
+                            brand: selectedSummary.brand ?? "",
+                            model: selectedSummary.model ?? "",
+                            size: selectedSummary.size ?? "",
+                            installed_at: selectedSummary.installed_at ?? "",
+                            installed_odo: selectedSummary.installed_odo ?? "",
+                            recommended_pressure_min: selectedSummary.recommended_pressure_min ?? "",
+                            recommended_pressure_max: selectedSummary.recommended_pressure_max ?? "",
+                          });
+                        } else {
+                          setMetaForm(emptyMetaForm());
+                        }
                       }}
                     >
                       취소
@@ -535,7 +652,21 @@ export default function TirePanel({ vehicle }) {
               <div className="rounded-2xl border border-border-light bg-surface-light p-5 shadow-card">
                 <div className="flex items-center justify-between">
                   <h3 className="text-base font-semibold text-text-light">기록</h3>
-                  <div className="flex rounded-full border border-border-light p-1 text-xs font-semibold">
+                  <div className="flex items-center gap-2">
+                    {historyTab === "measurements" ? (
+                      <button
+                        type="button"
+                        className="rounded-full bg-primary px-3 py-1 text-xs font-semibold text-white transition hover:bg-primary/90"
+                        onClick={() => {
+                          setMeasurementForm(emptyMeasurementForm());
+                          setEditingMeasurementId(null);
+                          setMeasurementModalOpen(true);
+                        }}
+                      >
+                        계측값 추가
+                      </button>
+                    ) : null}
+                    <div className="flex rounded-full border border-border-light p-1 text-xs font-semibold">
                     <button
                       className={`px-3 py-1 rounded-full ${historyTab === "measurements" ? "bg-primary text-white" : "text-subtext-light"}`}
                       onClick={() => setHistoryTab("measurements")}
@@ -548,6 +679,7 @@ export default function TirePanel({ vehicle }) {
                     >
                       서비스
                     </button>
+                    </div>
                   </div>
                 </div>
 
@@ -563,6 +695,24 @@ export default function TirePanel({ vehicle }) {
                             { label: "트레드", value: row.tread_depth_mm != null ? `${row.tread_depth_mm.toFixed(1)} mm` : "-" },
                             { label: "온도", value: row.temperature_c != null ? `${row.temperature_c.toFixed(1)} ℃` : "-" },
                           ]}
+                          actions={
+                            <div className="mt-3 flex gap-2">
+                              <button
+                                type="button"
+                                className="rounded-full border border-border-light px-3 py-1 text-xs font-semibold text-subtext-light transition hover:text-primary"
+                                onClick={() => handleMeasurementEdit(row)}
+                              >
+                                수정
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded-full border border-red-200 px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50"
+                                onClick={() => setPendingMeasurementDeleteId(row.id)}
+                              >
+                                삭제
+                              </button>
+                            </div>
+                          }
                         />
                       ))}
                     </div>
@@ -593,14 +743,23 @@ export default function TirePanel({ vehicle }) {
 
         {measurementModalOpen ? (
           <Modal
-            title="계측값 기록"
-            onClose={() => setMeasurementModalOpen(false)}
+            title={editingMeasurementId ? "계측값 수정" : "계측값 기록"}
+            onClose={() => {
+              setMeasurementModalOpen(false);
+              setEditingMeasurementId(null);
+            }}
             actions={
               <div className="flex flex-col gap-3">
                 <button disabled={loading} className={PRIMARY_BUTTON_CLASS} onClick={handleMeasurementSave}>
-                  계측값 저장
+                  {editingMeasurementId ? "계측값 수정" : "계측값 저장"}
                 </button>
-                <button className={SECONDARY_BUTTON_CLASS} onClick={() => setMeasurementModalOpen(false)}>
+                <button
+                  className={SECONDARY_BUTTON_CLASS}
+                  onClick={() => {
+                    setMeasurementModalOpen(false);
+                    setEditingMeasurementId(null);
+                  }}
+                >
                   취소
                 </button>
               </div>
@@ -644,6 +803,24 @@ export default function TirePanel({ vehicle }) {
           </Modal>
         ) : null}
       </div>
+      <ConfirmDialog
+        open={Boolean(pendingMeasurementDeleteId)}
+        title="계측값 삭제"
+        description="선택한 계측값을 삭제합니다. 삭제 후 복구할 수 없습니다."
+        confirmLabel="삭제"
+        onConfirm={handleMeasurementDelete}
+        onCancel={() => setPendingMeasurementDeleteId(null)}
+        loading={loading}
+      />
+      <ConfirmDialog
+        open={pendingMetaReset}
+        title="타이어 정보 초기화"
+        description="선택한 타이어의 기본 정보를 초기화합니다. 초기화 후 다시 입력해야 합니다."
+        confirmLabel="초기화"
+        onConfirm={handleMetaReset}
+        onCancel={() => setPendingMetaReset(false)}
+        loading={loading}
+      />
     </div>
   );
 }
@@ -668,7 +845,7 @@ function ActionButton({ label, onClick }) {
   );
 }
 
-function HistoryCard({ title, lines }) {
+function HistoryCard({ title, lines, actions }) {
   return (
     <div className="rounded-2xl border border-border-light bg-background-light p-4 text-sm shadow-sm">
       <p className="font-semibold text-text-light">{title}</p>
@@ -682,22 +859,25 @@ function HistoryCard({ title, lines }) {
           ) : null
         ))}
       </div>
+      {actions}
     </div>
   );
 }
 
 function Modal({ title, onClose, children, actions }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:items-center">
-      <div className="w-full max-w-md rounded-3xl bg-surface-light p-6 shadow-xl">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-text-light">{title}</h2>
-          <button className="text-subtext-light" onClick={onClose} aria-label="대화 상자 닫기">
-            닫기
-          </button>
+    <div className="fixed inset-0 z-50 bg-black/40">
+      <div className="flex min-h-screen w-screen items-center justify-center p-4">
+        <div className="w-full max-w-md rounded-3xl bg-surface-light p-6 shadow-xl">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-text-light">{title}</h2>
+            <button className="text-subtext-light" onClick={onClose} aria-label="대화 상자 닫기">
+              <span className="material-symbols-outlined text-2xl">close</span>
+            </button>
+          </div>
+          <div className="mt-4 space-y-3">{children}</div>
+          <div className="mt-6">{actions}</div>
         </div>
-        <div className="mt-4 space-y-3">{children}</div>
-        <div className="mt-6">{actions}</div>
       </div>
     </div>
   );
@@ -712,3 +892,36 @@ function renderPressureRange(item) {
   }
   return `${min}${item.pressure_unit || "kPa"} - ${max}${item.pressure_unit || "kPa"}`;
 }
+
+function localizeTireWarning(message) {
+  const mapping = {
+    "No tire metadata registered yet.": "타이어 기본 정보가 아직 없습니다.",
+    "Last pressure check was over 45 days ago.": "최근 공기압 점검 기록이 45일 이상 지났습니다.",
+    "Measurement timestamp missing.": "측정 시각 정보가 없습니다.",
+    "Pressure is far outside the recommended range.": "공기압이 권장 범위를 크게 벗어났습니다.",
+    "Pressure is outside the recommended range.": "공기압이 권장 범위를 벗어났습니다.",
+    "Tread depth is at or below 2mm. Replace immediately.": "트레드 깊이가 2mm 이하입니다. 즉시 교체가 필요합니다.",
+    "Tread depth is at or below 3mm. Plan a replacement soon.": "트레드 깊이가 3mm 이하입니다. 교체를 준비해주세요.",
+    "No pressure measurement recorded yet.": "공기압 측정 기록이 없습니다.",
+    "No Pressure measurement recorded yet.": "공기압 측정 기록이 없습니다.",
+    "Tire has been in service for more than 5 years.": "장착 후 5년 이상 경과했습니다.",
+    "Tire has covered more than 60,000 km since installation.": "장착 후 60,000km 이상 주행했습니다.",
+  };
+  return mapping[message] || message || "작성 필요";
+}
+
+function localizeTirePosition(value) {
+  const mapping = {
+    front_left: "전륜(좌)",
+    front_right: "전륜(우)",
+    rear_left: "후륜(좌)",
+    rear_right: "후륜(우)",
+    "Front Left": "전륜(좌)",
+    "Front Right": "전륜(우)",
+    "Rear Left": "후륜(좌)",
+    "Rear Right": "후륜(우)",
+  };
+  return mapping[value] || value || "타이어";
+}
+
+

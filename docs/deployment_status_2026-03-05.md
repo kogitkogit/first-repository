@@ -1,4 +1,4 @@
-# CarCare Supabase + Render 작업 정리 (2026-03-05)
+﻿# 내차수첩 Supabase + Render 작업 정리 (2026-03-05)
 
 작성 시각: 2026-03-05 00:20:09 +09:00
 
@@ -39,13 +39,13 @@
 
 ## 4) Render 실서버 검증
 
-- `https://carcare-project.onrender.com/docs` 접속 확인
+- `https://내차수첩-project.onrender.com/docs` 접속 확인
 - 실서버 스모크 테스트 성공
   - 회원가입/로그인 성공
   - 차량 등록/조회 성공
 - 헬스체크 엔드포인트 추가 및 반영
   - `GET /api/health` 구현
-  - 최종 확인: `https://carcare-project.onrender.com/api/health` -> `200`, `{"ok":true}`
+  - 최종 확인: `https://내차수첩-project.onrender.com/api/health` -> `200`, `{"ok":true}`
 
 ## 5) 슬립 방지(Keepalive)
 
@@ -53,7 +53,7 @@
 - GitHub Actions로 keepalive 구성 완료
   - 파일: `.github/workflows/render-keepalive.yml`
   - 주기: `*/14 * * * *`
-  - 대상: `https://carcare-project.onrender.com/api/health`
+  - 대상: `https://내차수첩-project.onrender.com/api/health`
 
 ## 6) 관련 커밋
 
@@ -70,3 +70,4 @@
 
 - Render Logs에서 DB 오류 없는지 주기 확인
 - GitHub Actions `Render Keepalive` 실행 성공 여부 확인
+

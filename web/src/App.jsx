@@ -523,7 +523,7 @@ function AppShell({ selectedVehicle, setSelectedVehicle, vehicles, fetchVehicles
               path="/settings"
               element={
                 <PanelGuard vehicle={selectedVehicle}>
-                  <SettingsPanel userId={userId} vehicle={selectedVehicle} username={username} accountType={accountType} />
+                  <SettingsPanel userId={userId} vehicle={selectedVehicle} username={username} accountType={accountType} onAccountDeleted={onLogout} />
                 </PanelGuard>
               }
             />

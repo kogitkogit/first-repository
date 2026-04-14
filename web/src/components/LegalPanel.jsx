@@ -2,6 +2,8 @@
 import api from "../api/client";
 import PanelTabs from "./PanelTabs";
 import ConfirmDialog from "./ui/ConfirmDialog";
+import { useToast } from "./ui/ToastProvider";
+import { DATE_ERROR_MESSAGE, validatePastOrToday } from "../utils/dateValidation";
 
 const DEFAULT_FORM = {
   insurance_company: "",
@@ -77,6 +79,7 @@ const InputField = ({ label, value, onChange, type = "text", placeholder }) => (
 );
 
 export default function LegalPanel({ vehicle }) {
+  const { showToast } = useToast();
   const [viewTab, setViewTab] = useState("summary");
   const [tab, setTab] = useState("insurance");
   const isSummaryView = viewTab === "summary";
@@ -141,11 +144,47 @@ export default function LegalPanel({ vehicle }) {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  const inferPrimaryTab = (record) => {
+    if (!record) return "insurance";
+    if (record.insurance_company || record.insurance_number || record.insurance_expiry) return "insurance";
+    if (record.tax_year || record.tax_amount || record.tax_due_date) return "tax";
+    if (record.inspection_center || record.inspection_date || record.next_inspection_date) return "inspection";
+    if (record.registration_number || record.registration_date || record.registration_office) return "registration";
+    return "memo";
+  };
+
+  const openRecordForEdit = (record, options = {}) => {
+    if (!record) return;
+    setActiveRecordId(record.id);
+    setForm({ ...DEFAULT_FORM, ...record });
+    setViewTab("details");
+    setTab(options.tab || inferPrimaryTab(record));
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "auto" });
+    }
+  };
+
+  const validateSectionDates = (sectionKey) => {
+    const validations = [];
+    if (sectionKey === "all" || sectionKey === "inspection") validations.push(form.inspection_date);
+    if (sectionKey === "all" || sectionKey === "registration") validations.push(form.registration_date);
+    return validations.filter(Boolean).every((value) => validatePastOrToday(value));
+  };
+
   const saveData = async (sectionKey = "all") => {
     if (!vehicle) {
       setMessageTone("error");
       setMessage("차량을 먼저 선택해주세요.");
       setLastSavedSection(sectionKey);
+      setTimeout(() => setMessage(""), 2000);
+      return;
+    }
+
+    if (!validateSectionDates(sectionKey)) {
+      setMessageTone("error");
+      setMessage(DATE_ERROR_MESSAGE);
+      setLastSavedSection(sectionKey);
+      showToast({ tone: "warning", message: DATE_ERROR_MESSAGE, placement: "center", duration: 1800 });
       setTimeout(() => setMessage(""), 2000);
       return;
     }
@@ -176,9 +215,11 @@ export default function LegalPanel({ vehicle }) {
       const label = SECTION_LABELS[sectionKey] || "법적 정보";
       setMessageTone("success");
       setMessage(`${label} 정보가 저장되었습니다.`);
+      showToast({ tone: "success", message: "저장되었습니다.", placement: "center", duration: 1800 });
     } catch (error) {
       setMessageTone("error");
       setMessage("저장 중 오류가 발생했습니다.");
+      showToast({ tone: "error", message: "저장 중 오류가 발생했습니다." });
     } finally {
       setLoading(false);
       setTimeout(() => setMessage(""), 2500);
@@ -194,11 +235,13 @@ export default function LegalPanel({ vehicle }) {
       setMessageTone("success");
       setMessage("저장된 기록이 삭제되었습니다.");
       setLastSavedSection("records");
+      showToast({ tone: "success", message: "삭제되었습니다.", placement: "center", duration: 1800 });
       await loadRecords();
     } catch (error) {
       setMessageTone("error");
       setMessage("삭제 중 오류가 발생했습니다.");
       setLastSavedSection("records");
+      showToast({ tone: "error", message: "삭제 중 오류가 발생했습니다." });
     } finally {
       setLoading(false);
       setTimeout(() => setMessage(""), 2500);
@@ -413,58 +456,55 @@ export default function LegalPanel({ vehicle }) {
               <section className="space-y-4 rounded-2xl border border-border-light bg-surface-light p-5 shadow-card">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="text-base font-semibold text-text-light">저장된 기록</h2>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!activeRecordId) return;
-                        const target = records.find((record) => record.id === activeRecordId);
-                        if (target) {
-                          setForm({ ...DEFAULT_FORM, ...target });
-                        }
-                      }}
-                      disabled={!activeRecordId}
-                      className="flex h-8 w-8 items-center justify-center rounded-full border border-border-light text-subtext-light transition hover:text-primary disabled:opacity-50"
-                      aria-label="선택 기록 수정"
-                    >
-                      <span className="material-symbols-outlined text-base">edit</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPendingDeleteRecordId(activeRecordId)}
-                      disabled={!activeRecordId || loading}
-                      className="flex h-8 w-8 items-center justify-center rounded-full border border-red-200 text-red-600 transition hover:bg-red-50 disabled:opacity-50"
-                      aria-label="선택 기록 삭제"
-                    >
-                      <span className="material-symbols-outlined text-base">delete</span>
-                    </button>
-                    <button
-                      onClick={() => loadRecords()}
-                      className="flex h-8 w-8 items-center justify-center rounded-full border border-border-light text-subtext-light transition hover:text-primary"
-                      aria-label="저장된 기록 새로고침"
-                    >
-                      <span className="material-symbols-outlined text-base">refresh</span>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => loadRecords()}
+                    className="rounded-full border border-border-light px-3 py-1 text-xs font-semibold text-subtext-light transition hover:text-primary"
+                  >
+                    새로고침
+                  </button>
                 </div>
                 <div className="space-y-3">
                   {records.map((record) => (
-                    <button
+                    <div
                       key={record.id}
-                      onClick={() => {
-                        setActiveRecordId(record.id);
-                        setForm({ ...DEFAULT_FORM, ...record });
-                      }}
-                      className={`w-full rounded-2xl border px-4 py-3 text-left transition ${activeRecordId === record.id ? "border-primary bg-primary/5" : "border-border-light bg-white"}`}
+                      className={`rounded-2xl border px-4 py-4 text-left transition ${activeRecordId === record.id ? "border-primary bg-primary/5" : "border-border-light bg-white"}`}
                     >
-                      <div className="flex justify-between items-center gap-3">
-                        <div className="text-sm">
-                          <p className="font-semibold">{record.insurance_company || "기록 정보"}</p>
-                          <p className="text-xs text-subtext-light">만기: {record.insurance_expiry || "-"}</p>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 text-sm">
+                          <p className="font-semibold text-text-light">
+                            {record.insurance_company || record.registration_number || "법적 정보 기록"}
+                          </p>
+                          <p className="mt-1 text-xs text-subtext-light">
+                            보험 만기 {record.insurance_expiry || "-"} · 검사일 {record.inspection_date || "-"}
+                          </p>
                         </div>
-                        {activeRecordId === record.id && <span className="text-xs font-semibold text-primary">선택됨</span>}
+                        {activeRecordId === record.id ? <span className="text-xs font-semibold text-primary">선택됨</span> : null}
                       </div>
-                    </button>
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          type="button"
+                          className="rounded-full border border-border-light px-3 py-1 text-xs font-semibold text-subtext-light transition hover:text-primary"
+                          onClick={() => openRecordForEdit(record, { tab: inferPrimaryTab(record) })}
+                        >
+                          상세
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-full border border-border-light px-3 py-1 text-xs font-semibold text-subtext-light transition hover:text-primary"
+                          onClick={() => openRecordForEdit(record, { tab: inferPrimaryTab(record) })}
+                        >
+                          수정
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-full border border-red-200 px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50"
+                          onClick={() => setPendingDeleteRecordId(record.id)}
+                        >
+                          삭제
+                        </button>
+                      </div>
+                    </div>
                   ))}
                 </div>
                 {message && lastSavedSection === "records" && (

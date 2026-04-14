@@ -23,6 +23,8 @@ def ensure_vehicle(vehicle_id: int, current_user: User, db: Session) -> Vehicle:
 @router.post("/update")
 def update_odometer(data: OdometerUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     vehicle = ensure_vehicle(data.vehicleId, current_user, db)
+    if data.date > date.today():
+        raise HTTPException(status_code=400, detail="올바른 날짜를 선택해주세요.")
     log = VehicleOdometerLog(vehicle_id=data.vehicleId, date=data.date, odo_km=data.odo_km)
     db.add(log)
     vehicle.odo_km = data.odo_km
@@ -66,13 +68,33 @@ def get_monthly(vehicleId: int, year: int, month: int, db: Session = Depends(get
 
 @router.get("/range")
 def get_range(vehicleId: int, fromDate: date, toDate: date, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    ensure_vehicle(vehicleId, current_user, db)
+    vehicle = ensure_vehicle(vehicleId, current_user, db)
+    if fromDate > toDate:
+        raise HTTPException(status_code=400, detail="날짜 범위를 확인해주세요.")
+
     logs = (
         db.query(VehicleOdometerLog)
         .filter(VehicleOdometerLog.vehicle_id == vehicleId, VehicleOdometerLog.date >= fromDate, VehicleOdometerLog.date <= toDate)
         .order_by(VehicleOdometerLog.date.asc())
         .all()
     )
-    if not logs:
-        return {"distance": 0}
-    return {"distance": logs[-1].odo_km - logs[0].odo_km}
+    start_log = (
+        db.query(VehicleOdometerLog)
+        .filter(VehicleOdometerLog.vehicle_id == vehicleId, VehicleOdometerLog.date <= fromDate)
+        .order_by(VehicleOdometerLog.date.desc())
+        .first()
+    )
+    end_log = (
+        db.query(VehicleOdometerLog)
+        .filter(VehicleOdometerLog.vehicle_id == vehicleId, VehicleOdometerLog.date <= toDate)
+        .order_by(VehicleOdometerLog.date.desc())
+        .first()
+    )
+
+    if not end_log:
+        fallback_end_km = vehicle.odo_km if vehicle.odo_km is not None and toDate >= date.today() else 0
+        return {"distance": 0, "start_km": fallback_end_km, "end_km": fallback_end_km, "count": 0}
+
+    start_km = start_log.odo_km if start_log else logs[0].odo_km if logs else end_log.odo_km
+    end_km = end_log.odo_km
+    return {"distance": max(0, end_km - start_km), "start_km": start_km, "end_km": end_km, "count": len(logs)}

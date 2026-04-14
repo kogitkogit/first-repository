@@ -3,9 +3,20 @@ import secrets
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from core.auth import get_current_user
 from core.security import create_token, hash_password, verify_password
 from db.session import get_db
+from models.ChargingRecord import ChargingRecord
+from models.ConsumableItem import Consumable, ConsumableItem
+from models.Expense import Expense
+from models.FuelRecord import FuelRecord
+from models.MaintenanceRecord import MaintenanceRecord
+from models.Notification import Notification
+from models.Tire import TireMeasurement, TireServiceRecord, VehicleTire
 from models.User import User
+from models.Vehicle import Vehicle
+from models.VehicleOdometerLog import VehicleOdometerLog
+from models.legalinfo import LegalInfo, LegalNotification
 from schemas.auth import LoginIn, RegisterIn, TokenOut
 
 router = APIRouter(tags=["auth"])
@@ -61,3 +72,28 @@ def guest_login(db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
     return build_token_response(user)
+
+
+@router.delete("/me")
+def delete_me(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    user_id = current_user.id
+    vehicle_ids = [vehicle.id for vehicle in db.query(Vehicle.id).filter(Vehicle.user_id == user_id).all()]
+
+    db.query(Notification).filter(Notification.user_id == user_id).delete(synchronize_session=False)
+    db.query(MaintenanceRecord).filter(MaintenanceRecord.user_id == user_id).delete(synchronize_session=False)
+    db.query(Consumable).filter(Consumable.user_id == user_id).delete(synchronize_session=False)
+    db.query(ConsumableItem).filter(ConsumableItem.user_id == user_id).delete(synchronize_session=False)
+    db.query(TireMeasurement).filter(TireMeasurement.user_id == user_id).delete(synchronize_session=False)
+    db.query(TireServiceRecord).filter(TireServiceRecord.user_id == user_id).delete(synchronize_session=False)
+    db.query(VehicleTire).filter(VehicleTire.user_id == user_id).delete(synchronize_session=False)
+    db.query(LegalNotification).filter(LegalNotification.user_id == user_id).delete(synchronize_session=False)
+    db.query(LegalInfo).filter(LegalInfo.user_id == user_id).delete(synchronize_session=False)
+    if vehicle_ids:
+        db.query(FuelRecord).filter(FuelRecord.vehicle_id.in_(vehicle_ids)).delete(synchronize_session=False)
+        db.query(ChargingRecord).filter(ChargingRecord.vehicle_id.in_(vehicle_ids)).delete(synchronize_session=False)
+        db.query(Expense).filter(Expense.vehicle_id.in_(vehicle_ids)).delete(synchronize_session=False)
+        db.query(VehicleOdometerLog).filter(VehicleOdometerLog.vehicle_id.in_(vehicle_ids)).delete(synchronize_session=False)
+        db.query(Vehicle).filter(Vehicle.id.in_(vehicle_ids)).delete(synchronize_session=False)
+    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+    db.commit()
+    return {"ok": True}

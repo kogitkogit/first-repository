@@ -103,9 +103,20 @@ def charging_stats(vehicleId: int, db: Session = Depends(get_db), current_user: 
     )
     total_cost = float(sum(float(row.price_total or 0) for row in rows))
     total_kwh = float(sum(float(row.energy_kwh or 0) for row in rows))
+    avg_cost_per_kwh = (total_cost / total_kwh) if total_kwh > 0 else None
     if len(rows) < 2:
-        return {"avg_km_per_kwh": None, "total_cost": total_cost, "total_kwh": total_kwh}
+        return {
+            "avg_km_per_kwh": None,
+            "total_cost": total_cost,
+            "total_kwh": total_kwh,
+            "avg_cost_per_kwh": avg_cost_per_kwh,
+        }
     distance_km = (rows[-1].odo_km or 0) - (rows[0].odo_km or 0)
     consumed_kwh = sum(float(row.energy_kwh or 0) for row in rows[1:])
     avg = (distance_km / consumed_kwh) if consumed_kwh > 0 else None
-    return {"avg_km_per_kwh": avg, "total_cost": total_cost, "total_kwh": total_kwh}
+    return {
+        "avg_km_per_kwh": avg,
+        "total_cost": total_cost,
+        "total_kwh": total_kwh,
+        "avg_cost_per_kwh": avg_cost_per_kwh,
+    }

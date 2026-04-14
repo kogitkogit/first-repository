@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    PROJECT_NAME: str = "CarCare"
+    PROJECT_NAME: str = "내차수첩"
 
     # DB 연결
     DATABASE_URL: str = "postgresql+psycopg2://carcare:carcare@localhost:5433/carcare"

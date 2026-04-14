@@ -1,6 +1,6 @@
-{
+﻿{
   "appId": "com.carcare.app",
-  "appName": "CarCare",
+  "appName": "내차수첩",
   "webDir": "dist",
   "bundledWebRuntime": false,
   "plugins": {
@@ -13,3 +13,4 @@
     }
   }
 }
+

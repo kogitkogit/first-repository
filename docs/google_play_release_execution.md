@@ -1,7 +1,7 @@
-# CarCare Google Play 배포 실행본 (무료 운영: Supabase + Render + 14분 Ping)
+﻿# 내차수첩 Google Play 배포 실행본 (무료 운영: Supabase + Render + 14분 Ping)
 
 > 작성일: 2026-03-04  
-> 대상 리포지토리: `C:\Users\sss54\Desktop\python\carcare\git`  
+> 대상 리포지토리: `C:\Users\sss54\Desktop\python\내차수첩\git`  
 > 목표: 현재 구조(React/Vite + FastAPI)를 유지한 채 Android AAB 배포 및 무료 운영(0원)
 
 ---
@@ -9,7 +9,7 @@
 ## 1. 현재 저장소 기준 확정값
 
 - 앱 ID: `com.carcare.app` (`web/capacitor.config.json`, `web/android/app/build.gradle`)
-- 앱 이름: `CarCare` (`web/capacitor.config.json`)
+- 앱 이름: `내차수첩` (`web/capacitor.config.json`)
 - Android 버전코드: `1` (`web/android/app/build.gradle`)
 - Android 버전명: `1.0` (`web/android/app/build.gradle`)
 - 프론트 API 기본값(개발용): `http://127.0.0.1:8000/api` (`web/src/api/client.js`)
@@ -158,7 +158,7 @@ npm run cap:sync
 ### 7-1. 키스토어 생성(최초 1회)
 
 ```bash
-keytool -genkeypair -v -keystore carcare-release.keystore -alias carcare -keyalg RSA -keysize 2048 -validity 10000
+keytool -genkeypair -v -keystore 내차수첩-release.keystore -alias 내차수첩 -keyalg RSA -keysize 2048 -validity 10000
 ```
 
 - [ ] keystore 파일 안전 보관
@@ -261,3 +261,5 @@ gradlew.bat bundleRelease
 - [ ] 내부 테스트 통과
 
 `모든 항목 완료 시: Production 배포 진행`
+
+

@@ -75,11 +75,14 @@ def delete_fuel(fuel_id: int, db: Session = Depends(get_db), current_user: User 
 @router.get("/stats")
 def fuel_stats(vehicleId: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     ensure_vehicle(vehicleId, current_user, db)
+    all_rows = db.query(FuelRecord).filter(FuelRecord.vehicle_id == vehicleId).all()
     rows = db.query(FuelRecord).filter(FuelRecord.vehicle_id == vehicleId, FuelRecord.is_full == True).order_by(FuelRecord.odo_km).all()
-    total_cost = float(sum(float(r.price_total or 0) for r in rows))
+    total_cost = float(sum(float(r.price_total or 0) for r in all_rows))
+    total_liters = float(sum(float(r.liters or 0) for r in all_rows))
+    avg_cost_per_l = (total_cost / total_liters) if total_liters > 0 else None
     if len(rows) < 2:
-        return {"avg_km_per_l": None, "total_cost": total_cost}
+        return {"avg_km_per_l": None, "total_cost": total_cost, "avg_cost_per_l": avg_cost_per_l}
     km = rows[-1].odo_km - rows[0].odo_km
     liters = sum(float(r.liters or 0) for r in rows[1:])
     avg = (km / liters) if liters > 0 else None
-    return {"avg_km_per_l": avg, "total_cost": total_cost}
+    return {"avg_km_per_l": avg, "total_cost": total_cost, "avg_cost_per_l": avg_cost_per_l}

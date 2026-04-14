@@ -1,33 +1,8 @@
 import { useMemo, useState } from "react";
 import api from "../api/client";
 import { useToast } from "./ui/ToastProvider";
-
-const AGREEMENT_CONTENT = {
-  terms: {
-    title: "서비스 이용약관",
-    sections: [
-      "CarCare는 차량 관리 기록, 정비 이력, 주유 및 충전 기록, 비용 관리 기능을 제공하는 차량 관리 서비스입니다.",
-      "이용자는 정확한 정보를 입력해야 하며, 타인의 권리를 침해하거나 관련 법령을 위반하는 방식으로 서비스를 이용할 수 없습니다.",
-      "운영 정책 위반이나 비정상 접근이 확인되면 서비스 이용이 제한될 수 있습니다.",
-    ],
-  },
-  privacy: {
-    title: "개인정보 수집·이용 동의",
-    sections: [
-      "차량 관리 서비스 제공을 위해 아이디, 비밀번호, 차량 정보와 같은 필수 정보를 수집합니다.",
-      "수집한 정보는 계정 식별, 차량 관리 기능 제공, 고객 문의 대응을 위해 사용됩니다.",
-      "자세한 내용은 개인정보처리방침과 docs/privacy_policy.md 기준 문서를 따릅니다.",
-    ],
-  },
-  marketing: {
-    title: "마케팅 정보 수신 동의",
-    sections: [
-      "이벤트, 업데이트, 운영 안내 메시지를 받을 수 있습니다.",
-      "해당 동의는 선택 사항이며, 동의하지 않아도 기본 서비스 이용에는 제한이 없습니다.",
-      "수신 동의 여부는 추후 설정 정책이 추가될 때 변경할 수 있습니다.",
-    ],
-  },
-};
+import DocumentModal from "./ui/DocumentModal";
+import { APP_NAME, POLICY_DOCUMENTS } from "../content/policyDocuments";
 
 export default function RegisterScreen({ onBack, onRegisterSuccess }) {
   const { showToast } = useToast();
@@ -45,10 +20,7 @@ export default function RegisterScreen({ onBack, onRegisterSuccess }) {
   const [loading, setLoading] = useState(false);
 
   const requiredChecked = agreements.terms && agreements.privacy;
-  const activeContent = useMemo(
-    () => (activeAgreement ? AGREEMENT_CONTENT[activeAgreement] : null),
-    [activeAgreement],
-  );
+  const activeContent = useMemo(() => (activeAgreement ? POLICY_DOCUMENTS[activeAgreement] : null), [activeAgreement]);
 
   const toggleAgreement = (key) => {
     if (key === "all") {
@@ -64,7 +36,11 @@ export default function RegisterScreen({ onBack, onRegisterSuccess }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!requiredChecked) {
-      setError("필수 약관에 동의해야 가입할 수 있습니다.");
+      setError("필수 항목에 동의해야 가입할 수 있습니다.");
+      return;
+    }
+    if (!username || !password) {
+      setError("아이디와 비밀번호를 입력해주세요.");
       return;
     }
     if (password !== confirmPassword) {
@@ -96,7 +72,7 @@ export default function RegisterScreen({ onBack, onRegisterSuccess }) {
         <button type="button" aria-label="뒤로가기" className="flex h-10 w-10 items-center justify-start text-text-light" onClick={onBack}>
           <span className="material-symbols-outlined text-2xl">arrow_back</span>
         </button>
-        <h1 className="text-base font-bold">회원가입</h1>
+        <h1 className="text-base font-bold">{APP_NAME} 회원가입</h1>
         <div className="h-10 w-10" />
       </header>
 
@@ -152,11 +128,16 @@ export default function RegisterScreen({ onBack, onRegisterSuccess }) {
             </label>
             <div className="h-px w-full bg-border-light" />
             <div className="flex flex-col">
-              <AgreementRow checked={agreements.terms} onChange={() => toggleAgreement("terms")} onView={() => setActiveAgreement("terms")} label="(필수) 서비스 이용약관 동의" />
-              <AgreementRow checked={agreements.privacy} onChange={() => toggleAgreement("privacy")} onView={() => setActiveAgreement("privacy")} label="(필수) 개인정보 수집·이용 동의" />
-              <AgreementRow checked={agreements.marketing} onChange={() => toggleAgreement("marketing")} onView={() => setActiveAgreement("marketing")} label="(선택) 마케팅 정보 수신 동의" />
+              <AgreementRow checked={agreements.terms} onChange={() => toggleAgreement("terms")} onView={() => setActiveAgreement("terms")} label="(필수) 서비스 이용 안내 동의" />
+              <AgreementRow checked={agreements.privacy} onChange={() => toggleAgreement("privacy")} onView={() => setActiveAgreement("privacy")} label="(필수) 개인정보처리방침 확인" />
+              <AgreementRow checked={agreements.marketing} onChange={() => toggleAgreement("marketing")} onView={() => setActiveAgreement("backup")} label="(선택) 백업 및 복구 정책 확인" />
             </div>
           </section>
+
+          <div className="rounded-2xl border border-border-light bg-background-light px-4 py-4 text-sm leading-6 text-subtext-light">
+            서비스 이용 안내는 <InlineDocButton onClick={() => setActiveAgreement("terms")} />를, 개인정보처리방침은{" "}
+            <InlineDocButton onClick={() => setActiveAgreement("privacy")} />를 클릭해 바로 볼 수 있습니다.
+          </div>
 
           {error ? <p className="text-sm text-status-danger">{error}</p> : null}
 
@@ -179,7 +160,13 @@ export default function RegisterScreen({ onBack, onRegisterSuccess }) {
         </button>
       </footer>
 
-      {activeContent ? <AgreementModal title={activeContent.title} sections={activeContent.sections} onClose={() => setActiveAgreement(null)} /> : null}
+      <DocumentModal
+        open={Boolean(activeContent)}
+        title={activeContent?.title}
+        effectiveDate={activeContent?.effectiveDate}
+        sections={activeContent?.sections || []}
+        onClose={() => setActiveAgreement(null)}
+      />
     </div>
   );
 }
@@ -191,36 +178,17 @@ function AgreementRow({ checked, onChange, onView, label }) {
         <input type="checkbox" checked={checked} onChange={onChange} className="h-5 w-5 rounded border-border-light text-primary focus:ring-primary" />
         <span className="text-sm">{label}</span>
       </div>
-      <button type="button" onClick={onView} className="text-xs text-subtext-light underline">
-        보기
+      <button type="button" onClick={onView} className="text-xs font-semibold text-primary underline">
+        여기
       </button>
     </label>
   );
 }
 
-function AgreementModal({ title, sections, onClose }) {
+function InlineDocButton({ onClick }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-3xl bg-surface-light shadow-2xl">
-        <div className="flex items-center justify-between border-b border-border-light px-5 py-4">
-          <h3 className="text-lg font-semibold text-text-light">{title}</h3>
-          <button type="button" className="text-subtext-light" onClick={onClose} aria-label="닫기">
-            <span className="material-symbols-outlined text-2xl">close</span>
-          </button>
-        </div>
-        <div className="space-y-3 overflow-y-auto px-5 py-4">
-          {sections.map((section, index) => (
-            <p key={`${title}-${index}`} className="text-sm leading-6 text-subtext-light">
-              {section}
-            </p>
-          ))}
-        </div>
-        <div className="border-t border-border-light px-5 py-4">
-          <button type="button" className="w-full rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90" onClick={onClose}>
-            확인
-          </button>
-        </div>
-      </div>
-    </div>
+    <button type="button" className="font-semibold text-primary underline" onClick={onClick}>
+      여기
+    </button>
   );
 }

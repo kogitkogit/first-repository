@@ -5,6 +5,7 @@ import { useDrivingAnalysis } from "./DrivingAnalysisPanel";
 import { CONSUMABLE_CATEGORY_META } from "../constants/consumables";
 import { fetchCostSnapshot } from "../utils/costs";
 import { useToast } from "./ui/ToastProvider";
+import { DATE_ERROR_MESSAGE, validatePastOrToday } from "../utils/dateValidation";
 
 const menu = [
   { key: "basic", label: "기본 정보", icon: "badge", path: "/basic" },
@@ -29,8 +30,8 @@ const FUEL_TYPE_LABEL = {
 
 export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 0, legalSummary = {} }) {
   const { showToast } = useToast();
-  const [stats, setStats] = useState({ avg_km_per_l: null, total_cost: null });
-  const [chargeStats, setChargeStats] = useState({ avg_km_per_kwh: null, total_cost: null, total_kwh: null });
+  const [stats, setStats] = useState({ avg_km_per_l: null, total_cost: null, avg_cost_per_l: null });
+  const [chargeStats, setChargeStats] = useState({ avg_km_per_kwh: null, total_cost: null, total_kwh: null, avg_cost_per_kwh: null });
   const [expenseMonthly, setExpenseMonthly] = useState(0);
   const [currentOdo, setCurrentOdo] = useState(null);
   const [odoReady, setOdoReady] = useState(false);
@@ -58,14 +59,14 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
       .get("/fuel/stats", { params: { vehicleId: vehicle.id } })
       .then((r) => setStats(r.data))
       .catch(() => {
-        setStats({ avg_km_per_l: null, total_cost: null });
+        setStats({ avg_km_per_l: null, total_cost: null, avg_cost_per_l: null });
       });
 
     api
       .get("/charging/stats", { params: { vehicleId: vehicle.id } })
       .then((r) => setChargeStats(r.data))
       .catch(() => {
-        setChargeStats({ avg_km_per_kwh: null, total_cost: null, total_kwh: null });
+        setChargeStats({ avg_km_per_kwh: null, total_cost: null, total_kwh: null, avg_cost_per_kwh: null });
       });
 
     api
@@ -160,6 +161,10 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
 
   const handleOdoSave = () => {
     if (!vehicle || !odoDate || !odoKm) return;
+    if (!validatePastOrToday(odoDate)) {
+      showToast({ tone: "warning", message: DATE_ERROR_MESSAGE, placement: "center", duration: 1800 });
+      return;
+    }
     api
       .post("/odometer/update", { vehicleId: vehicle.id, date: odoDate, odo_km: Number(odoKm) })
       .then(() => {
@@ -182,22 +187,28 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
   const energyMetric = (() => {
     if (vehicle?.fuelType === "ev") {
       return {
-        label: "평균 전비 계산 결과",
+        label: "평균 kWh당 비용",
         icon: "ev_station",
-        value: chargeStats?.avg_km_per_kwh != null ? `${Number(chargeStats.avg_km_per_kwh).toFixed(1)} km/kWh` : "집계 없음",
+        value: chargeStats?.avg_cost_per_kwh != null ? `${Math.round(Number(chargeStats.avg_cost_per_kwh)).toLocaleString()} 원` : "집계 없음",
       };
     }
     if (vehicle?.fuelType === "phev") {
+      const value =
+        stats?.avg_cost_per_l != null
+          ? `${Math.round(Number(stats.avg_cost_per_l)).toLocaleString()} 원`
+          : chargeStats?.avg_cost_per_kwh != null
+          ? `${Math.round(Number(chargeStats.avg_cost_per_kwh)).toLocaleString()} 원`
+          : "집계 없음";
       return {
-        label: "주유/충전 기록 상태",
+        label: "평균 에너지 단가",
         icon: "energy_savings_leaf",
-        value: chargeStats?.total_kwh != null && Number(chargeStats.total_kwh) > 0 ? `충전 ${Number(chargeStats.total_kwh).toFixed(1)} kWh` : "집계 없음",
+        value,
       };
     }
     return {
-      label: "평균 연비 계산 결과",
+      label: "평균 리터당 비용",
       icon: "local_gas_station",
-      value: stats?.avg_km_per_l != null ? `${Number(stats.avg_km_per_l).toFixed(1)} km/L` : "집계 없음",
+      value: stats?.avg_cost_per_l != null ? `${Math.round(Number(stats.avg_cost_per_l)).toLocaleString()} 원` : "집계 없음",
     };
   })();
   const metrics = useMemo(
@@ -231,6 +242,35 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
     }
     if (metricKey === "fuel") {
       navigate("/fuel");
+    }
+  };
+
+  const handleDueItemSelect = (item) => {
+    if (!item) return;
+    if (item.area === "타이어 관리" && item.position) {
+      setDueModalOpen(false);
+      navigate("/tire", {
+        state: {
+          focusTirePosition: item.position,
+          focusTireDetail: true,
+        },
+      });
+      return;
+    }
+
+    if (item.category === "oil") {
+      setDueModalOpen(false);
+      navigate("/oil", { state: { focusConsumableKind: item.kind } });
+      return;
+    }
+    if (item.category === "filter") {
+      setDueModalOpen(false);
+      navigate("/filter", { state: { focusConsumableKind: item.kind } });
+      return;
+    }
+    if (item.category === "etc") {
+      setDueModalOpen(false);
+      navigate("/other", { state: { focusConsumableKind: item.kind } });
     }
   };
 
@@ -396,12 +436,13 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
         onClose={() => setDueModalOpen(false)}
         summary={dueSummary}
         onReload={loadDueSummary}
+        onItemSelect={handleDueItemSelect}
       />
     </div>
   );
 }
 
-function DueItemsSheet({ open, onClose, summary, onReload }) 
+function DueItemsSheet({ open, onClose, summary, onReload, onItemSelect }) 
 
 {
   if (!open) return null;
@@ -435,7 +476,12 @@ function DueItemsSheet({ open, onClose, summary, onReload })
           ) : (
             <ul className="space-y-3">
               {visibleItems.map((item) => (
-                <li key={item.id} className="rounded-2xl border border-border-light bg-white px-4 py-3 shadow-sm">
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    className="w-full rounded-2xl border border-border-light bg-white px-4 py-3 text-left shadow-sm transition hover:border-primary/40"
+                    onClick={() => onItemSelect?.(item)}
+                  >
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-wide text-subtext-light">{item.area}</p>
@@ -456,6 +502,7 @@ function DueItemsSheet({ open, onClose, summary, onReload })
                       {item.tone === "danger" ? "위험" : item.tone === "warn" ? "교체 필요" : item.tone === "ok" ? "양호" : "작성 필요"}
                     </span>
                   </div>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -503,6 +550,8 @@ export async function summarizeConsumableDue(vehicleId, currentMileage) {
               name: item.kind || meta.panelLabel || meta.category,
               status: status.message,
               tone: status.tone,
+              category: meta.key,
+              kind: item.kind || null,
             };
           }
           return null;
@@ -533,9 +582,10 @@ export async function summarizeTireDue(vehicleId) {
         return {
           id: `tire-${tire.position || tire.position_label || Math.random().toString(36).slice(2, 8)}`,
           area: "타이어 관리",
-          name: tire.position_label || tire.position,
+          name: localizeTirePosition(tire.position_label || tire.position),
           status: tire.warnings.map(localizeTireWarning).join(" "),
           tone: missingOnly ? "muted" : tire.status === "critical" ? "danger" : "warn",
+          position: tire.position || null,
         };
       })
       .filter(Boolean);
@@ -654,4 +704,18 @@ function localizeTireWarning(message) {
     "Tire has covered more than 60,000 km since installation.": "장착 후 60,000km 이상 주행했습니다.",
   };
   return mapping[message] || message || "작성 필요";
+}
+
+function localizeTirePosition(value) {
+  const mapping = {
+    front_left: "전륜(좌)",
+    front_right: "전륜(우)",
+    rear_left: "후륜(좌)",
+    rear_right: "후륜(우)",
+    "Front Left": "전륜(좌)",
+    "Front Right": "전륜(우)",
+    "Rear Left": "후륜(좌)",
+    "Rear Right": "후륜(우)",
+  };
+  return mapping[value] || value || "타이어";
 }

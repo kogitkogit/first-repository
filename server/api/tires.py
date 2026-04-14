@@ -317,6 +317,52 @@ def update_tire_meta(
     return compute_summary_item(vehicle, pos_enum, tire, last_measurement, last_service)
 
 
+@router.delete("/{position}/meta", response_model=TireSummaryItem)
+def reset_tire_meta(
+    position: str = Path(...),
+    vehicleId: int = Query(..., alias="vehicleId"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    vehicle = ensure_vehicle(vehicleId, current_user, db)
+    try:
+        pos_enum = TirePosition(position)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid tire position")
+
+    tire = get_or_create_tire(vehicle, pos_enum, db, create=True)
+    for field in [
+        "brand",
+        "model",
+        "size",
+        "dot_code",
+        "installed_at",
+        "installed_odo",
+        "recommended_pressure_min",
+        "recommended_pressure_max",
+        "notes",
+    ]:
+        setattr(tire, field, None)
+    tire.pressure_unit = "kPa"
+    db.add(tire)
+    db.commit()
+    db.refresh(tire)
+
+    last_measurement = (
+        db.query(TireMeasurement)
+        .filter(TireMeasurement.tire_id == tire.id)
+        .order_by(TireMeasurement.measured_at.desc())
+        .first()
+    )
+    last_service = (
+        db.query(TireServiceRecord)
+        .filter(TireServiceRecord.tire_id == tire.id)
+        .order_by(TireServiceRecord.performed_at.desc())
+        .first()
+    )
+    return compute_summary_item(vehicle, pos_enum, tire, last_measurement, last_service)
+
+
 @router.post("/{position}/measurements", response_model=TireMeasurementOut)
 def create_tire_measurement(
     payload: TireMeasurementCreate,
@@ -334,6 +380,9 @@ def create_tire_measurement(
     tire = get_or_create_tire(vehicle, pos_enum, db, create=True)
 
     measured_at = payload.measured_at or datetime.now(timezone.utc)
+    measured_date = measured_at.date() if hasattr(measured_at, "date") else None
+    if measured_date and measured_date > date.today():
+        raise HTTPException(status_code=400, detail="올바른 날짜를 선택해주세요.")
 
     measurement = TireMeasurement(
         user_id=current_user.id,
@@ -353,6 +402,78 @@ def create_tire_measurement(
     return TireMeasurementOut.model_validate(measurement)
 
 
+@router.put("/{position}/measurements/{measurement_id}", response_model=TireMeasurementOut)
+def update_tire_measurement(
+    payload: TireMeasurementCreate,
+    measurement_id: int,
+    position: str = Path(...),
+    vehicleId: int = Query(..., alias="vehicleId"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    vehicle = ensure_vehicle(vehicleId, current_user, db)
+    try:
+        pos_enum = TirePosition(position)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid tire position")
+
+    tire = get_or_create_tire(vehicle, pos_enum, db, create=True)
+    measurement = (
+        db.query(TireMeasurement)
+        .filter(
+            TireMeasurement.id == measurement_id,
+            TireMeasurement.vehicle_id == vehicle.id,
+            TireMeasurement.tire_id == tire.id,
+        )
+        .first()
+    )
+    if not measurement:
+        raise HTTPException(status_code=404, detail="Measurement not found")
+
+    measured_at = payload.measured_at or measurement.measured_at
+    measured_date = measured_at.date() if hasattr(measured_at, "date") else None
+    if measured_date and measured_date > date.today():
+        raise HTTPException(status_code=400, detail="올바른 날짜를 선택해주세요.")
+
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(measurement, field, value)
+    measurement.measured_at = measured_at
+    db.add(measurement)
+    db.commit()
+    db.refresh(measurement)
+    return TireMeasurementOut.model_validate(measurement)
+
+
+@router.delete("/{position}/measurements/{measurement_id}")
+def delete_tire_measurement(
+    measurement_id: int,
+    position: str = Path(...),
+    vehicleId: int = Query(..., alias="vehicleId"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    vehicle = ensure_vehicle(vehicleId, current_user, db)
+    try:
+        pos_enum = TirePosition(position)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid tire position")
+    tire = get_or_create_tire(vehicle, pos_enum, db, create=True)
+    measurement = (
+        db.query(TireMeasurement)
+        .filter(
+            TireMeasurement.id == measurement_id,
+            TireMeasurement.vehicle_id == vehicle.id,
+            TireMeasurement.tire_id == tire.id,
+        )
+        .first()
+    )
+    if not measurement:
+        raise HTTPException(status_code=404, detail="Measurement not found")
+    db.delete(measurement)
+    db.commit()
+    return {"ok": True}
+
+
 @router.post("/{position}/replacement", response_model=TireServiceRecordOut)
 def record_tire_replacement(
     payload: TireReplacementCreate,
@@ -368,6 +489,8 @@ def record_tire_replacement(
         raise HTTPException(status_code=400, detail="Invalid tire position")
 
     tire = get_or_create_tire(vehicle, pos_enum, db, create=True)
+    if payload.performed_at > date.today():
+        raise HTTPException(status_code=400, detail="올바른 날짜를 선택해주세요.")
 
     field_values = payload.model_dump(exclude_unset=True)
     service_payload = {key: field_values.pop(key) for key in ["performed_at", "odo_km", "provider", "cost"] if key in field_values}
@@ -408,6 +531,8 @@ def record_rotation(
     current_user: User = Depends(get_current_user),
 ):
     vehicle = ensure_vehicle(payload.vehicle_id, current_user, db)
+    if payload.performed_at > date.today():
+        raise HTTPException(status_code=400, detail="올바른 날짜를 선택해주세요.")
 
     service = TireServiceRecord(
         user_id=current_user.id,
