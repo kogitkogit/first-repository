@@ -134,7 +134,8 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
         summarizeConsumableDue(vehicle.id, baseMileage),
         summarizeTireDue(vehicle.id),
       ]);
-      const items = [...consumableDue, ...tireDue].sort((a, b) => {
+      const legalDue = summarizeLegalDue(legalSummary);
+      const items = [...consumableDue, ...tireDue, ...legalDue].sort((a, b) => {
         const diff = DUE_TONE_PRIORITY[a.tone] - DUE_TONE_PRIORITY[b.tone];
         if (diff !== 0) return diff;
         return a.area.localeCompare(b.area, "ko-KR");
@@ -144,7 +145,7 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
         console.error("교체 알림 정보를 불러오지 못했습니다.", error);
         setDueSummary({ loading: false, items: [], error: "교체 알림 정보를 불러오지 못했습니다." });
     }
-  }, [vehicle, currentOdo]);
+  }, [vehicle, currentOdo, legalSummary]);
 
   useEffect(() => {
     if (!vehicle || !odoReady) return;
@@ -271,6 +272,11 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
     if (item.category === "etc") {
       setDueModalOpen(false);
       navigate("/other", { state: { focusConsumableKind: item.kind } });
+      return;
+    }
+    if (item.area === "법적 서류") {
+      setDueModalOpen(false);
+      navigate("/legal");
     }
   };
 
@@ -570,21 +576,23 @@ export async function summarizeTireDue(vehicleId) {
     return tires
       .filter((tire) => Array.isArray(tire.warnings) && tire.warnings.length)
       .map((tire) => {
-        const missingOnly =
-          tire.warnings.length > 0 &&
-          tire.warnings.every((warning) =>
-            [
-              "No tire metadata registered yet.",
-              "Measurement timestamp missing.",
-              "No pressure measurement recorded yet.",
-            ].includes(warning),
-          );
+        const tone =
+          tire.status === "critical"
+            ? "danger"
+            : tire.status === "warning"
+            ? "warn"
+            : "muted";
+        const localizedWarnings = (tire.warnings || []).map(localizeTireWarning).filter(Boolean);
+        const statusParts = [
+          tire.next_action || null,
+          ...localizedWarnings,
+        ].filter(Boolean);
         return {
           id: `tire-${tire.position || tire.position_label || Math.random().toString(36).slice(2, 8)}`,
           area: "타이어 관리",
           name: localizeTirePosition(tire.position_label || tire.position),
-          status: tire.warnings.map(localizeTireWarning).join(" "),
-          tone: missingOnly ? "muted" : tire.status === "critical" ? "danger" : "warn",
+          status: statusParts.join(" · "),
+          tone,
           position: tire.position || null,
         };
       })
@@ -593,6 +601,114 @@ export async function summarizeTireDue(vehicleId) {
     console.warn("타이어 요약 정보를 불러오지 못했습니다.", error);
     return [];
   }
+}
+
+function parseYmd(value) {
+  if (!value) return null;
+  const [y, m, d] = String(value).slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return null;
+  const date = new Date(y, m - 1, d);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function diffDaysFromToday(value) {
+  const target = parseYmd(value);
+  if (!target) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  target.setHours(0, 0, 0, 0);
+  return Math.round((target.getTime() - today.getTime()) / 86400000);
+}
+
+function buildLegalDueItem({ id, name, date, tone, status }) {
+  return {
+    id,
+    area: "법적 서류",
+    name,
+    status,
+    tone,
+    category: "legal",
+    kind: id,
+  };
+}
+
+export function summarizeLegalDue(legalSummary = {}) {
+  const items = [];
+
+  const insuranceDate = legalSummary?.insurance?.expiry_date;
+  if (insuranceDate) {
+    const days = diffDaysFromToday(insuranceDate);
+    if (days != null) {
+      if (days < 0) {
+        items.push(buildLegalDueItem({
+          id: "legal-insurance-expired",
+          name: "보험 갱신일",
+          date: insuranceDate,
+          tone: "danger",
+          status: "보험 만기일이 지났습니다. 갱신이 필요합니다.",
+        }));
+      } else if (days <= 30) {
+        items.push(buildLegalDueItem({
+          id: "legal-insurance-soon",
+          name: "보험 갱신일",
+          date: insuranceDate,
+          tone: "warn",
+          status: `${days}일 이내 보험 갱신이 필요합니다.`,
+        }));
+      }
+    }
+  }
+
+  const inspectionDate = legalSummary?.inspection?.next_inspection_date || legalSummary?.inspection?.next;
+  if (inspectionDate) {
+    const days = diffDaysFromToday(inspectionDate);
+    if (days != null) {
+      if (days < 0) {
+        items.push(buildLegalDueItem({
+          id: "legal-inspection-expired",
+          name: "정기검사 일정",
+          date: inspectionDate,
+          tone: "danger",
+          status: "정기검사 예정일이 지났습니다. 확인이 필요합니다.",
+        }));
+      } else if (days <= 30) {
+        items.push(buildLegalDueItem({
+          id: "legal-inspection-soon",
+          name: "정기검사 일정",
+          date: inspectionDate,
+          tone: "warn",
+          status: `${days}일 이내 정기검사 일정이 있습니다.`,
+        }));
+      }
+    }
+  }
+
+  const taxDate = legalSummary?.tax?.tax_due_date;
+  const taxPaid = Boolean(legalSummary?.tax?.paid);
+  if (taxDate && !taxPaid) {
+    const days = diffDaysFromToday(taxDate);
+    if (days != null) {
+      if (days < 0) {
+        items.push(buildLegalDueItem({
+          id: "legal-tax-expired",
+          name: "자동차세 납부기한",
+          date: taxDate,
+          tone: "danger",
+          status: "자동차세 납부 기한이 지났습니다.",
+        }));
+      } else if (days <= 30) {
+        items.push(buildLegalDueItem({
+          id: "legal-tax-soon",
+          name: "자동차세 납부기한",
+          date: taxDate,
+          tone: "warn",
+          status: `${days}일 이내 자동차세 납부가 필요합니다.`,
+        }));
+      }
+    }
+  }
+
+  return items;
 }
 
 function summarizeOdoFromHistory(history) {
@@ -693,16 +809,25 @@ function computeConsumableStatus({ item, currentMileage, latestOdo, latestDate }
 function localizeTireWarning(message) {
   const mapping = {
     "No tire metadata registered yet.": "기본 정보 작성 필요",
-    "Last pressure check was over 45 days ago.": "최근 공기압 점검 기록이 45일 이상 지났습니다.",
     "Measurement timestamp missing.": "측정 시각 작성 필요",
     "Pressure is far outside the recommended range.": "공기압이 권장 범위를 크게 벗어났습니다.",
     "Pressure is outside the recommended range.": "공기압이 권장 범위를 벗어났습니다.",
     "Tread depth is at or below 2mm. Replace immediately.": "트레드 깊이가 2mm 이하입니다. 즉시 교체가 필요합니다.",
     "Tread depth is at or below 3mm. Plan a replacement soon.": "트레드 깊이가 3mm 이하입니다. 교체를 준비해주세요.",
     "No pressure measurement recorded yet.": "공기압 측정 기록 작성 필요",
-    "Tire has been in service for more than 5 years.": "장착 후 5년 이상 경과했습니다.",
-    "Tire has covered more than 60,000 km since installation.": "장착 후 60,000km 이상 주행했습니다.",
   };
+  if (message?.startsWith("Last pressure check was over ")) {
+    const days = message.match(/over (\d+) days/)?.[1];
+    return `최근 공기압 점검 기록이 ${days || "기준"} 이상 지났습니다.`;
+  }
+  if (message?.startsWith("Tire has been in service for more than ")) {
+    const years = message.match(/more than (\d+) years/)?.[1];
+    return `장착 후 ${years || "기준"}년 이상 경과했습니다.`;
+  }
+  if (message?.startsWith("Tire has covered more than ")) {
+    const km = message.match(/more than ([\d,]+) km/)?.[1];
+    return `장착 후 ${km || "기준"}km 이상 주행했습니다.`;
+  }
   return mapping[message] || message || "작성 필요";
 }
 

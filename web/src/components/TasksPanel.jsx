@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import api from "../api/client";
-import { summarizeConsumableDue, summarizeTireDue } from "./Dashboard";
+import { summarizeConsumableDue, summarizeLegalDue, summarizeTireDue } from "./Dashboard";
 
 const TONE_PRIORITY = { danger: 0, warn: 1, muted: 2, ok: 3 };
 
@@ -57,11 +57,12 @@ export default function TasksPanel({ vehicle, legalSummary = {} }) {
           summarizeConsumableDue(vehicle.id, odo),
           summarizeTireDue(vehicle.id),
         ]);
+        const legalDue = summarizeLegalDue(legalSummary);
 
         if (cancelled) return;
         setStats(statsRes.data || { avg_km_per_l: null, total_cost: null });
         setCurrentOdo(odo);
-        setDueItems([...consumableDue, ...tireDue]);
+        setDueItems([...consumableDue, ...tireDue, ...legalDue]);
       } catch (error) {
         console.error("할 일 데이터를 불러오지 못했습니다.", error);
       } finally {
@@ -73,7 +74,7 @@ export default function TasksPanel({ vehicle, legalSummary = {} }) {
     return () => {
       cancelled = true;
     };
-  }, [vehicle?.id, vehicle?.odo_km]);
+  }, [vehicle?.id, vehicle?.odo_km, legalSummary]);
 
   const setupItems = useMemo(
     () => [
@@ -95,6 +96,13 @@ export default function TasksPanel({ vehicle, legalSummary = {} }) {
         key: "inspection",
         label: "정기검사 일정 등록",
         done: Boolean(legalSummary?.inspection?.next_inspection_date || legalSummary?.inspection?.next),
+        actionLabel: "법적 서류 열기",
+        action: () => navigate("/legal"),
+      },
+      {
+        key: "tax",
+        label: "자동차세 납부기한 등록",
+        done: Boolean(legalSummary?.tax?.tax_due_date),
         actionLabel: "법적 서류 열기",
         action: () => navigate("/legal"),
       },
@@ -153,6 +161,15 @@ export default function TasksPanel({ vehicle, legalSummary = {} }) {
         tone: "muted",
       });
     }
+    if (!legalSummary?.tax?.tax_due_date) {
+      items.push({
+        id: "missing-tax",
+        area: "법적 서류",
+        name: "자동차세 납부기한",
+        status: "자동차세 납부기한 작성 필요",
+        tone: "muted",
+      });
+    }
     if (!stats || stats.total_cost == null || Number(stats.total_cost) === 0) {
       items.push({
         id: "missing-energy",
@@ -181,7 +198,7 @@ export default function TasksPanel({ vehicle, legalSummary = {} }) {
           <div>
             <h2 className="text-lg font-bold text-text-light">초기 설정 가이드</h2>
             <p className="mt-1 text-sm text-subtext-light">
-              기본 정보가 채워질수록 알림 기준과 할 일 안내가 정확해집니다.
+              기본 정보가 채워질수록 알림 기준과 점검 안내가 더 정확해집니다.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -195,9 +212,7 @@ export default function TasksPanel({ vehicle, legalSummary = {} }) {
                 onClick={() => setSetupCollapsed((prev) => !prev)}
                 aria-label={setupCollapsed ? "초기 설정 펼치기" : "초기 설정 접기"}
               >
-                <span className="material-symbols-outlined text-base">
-                  {setupCollapsed ? "expand_more" : "expand_less"}
-                </span>
+                <span className="material-symbols-outlined text-base">{setupCollapsed ? "expand_more" : "expand_less"}</span>
               </button>
             ) : null}
           </div>
@@ -206,10 +221,7 @@ export default function TasksPanel({ vehicle, legalSummary = {} }) {
         {!setupCollapsed ? (
           <div className="mt-4 space-y-3">
             {setupItems.map((item) => (
-              <div
-                key={item.key}
-                className="flex items-center justify-between gap-3 rounded-2xl border border-border-light bg-background-light px-4 py-3"
-              >
+              <div key={item.key} className="flex items-center justify-between gap-3 rounded-2xl border border-border-light bg-background-light px-4 py-3">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-text-light">{item.label}</p>
                   <p className="mt-1 text-xs text-subtext-light">{item.done ? "완료" : "작성 필요"}</p>
@@ -219,11 +231,7 @@ export default function TasksPanel({ vehicle, legalSummary = {} }) {
                     {item.done ? "check_circle" : "radio_button_unchecked"}
                   </span>
                   {!item.done ? (
-                    <button
-                      type="button"
-                      className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-white"
-                      onClick={item.action}
-                    >
+                    <button type="button" className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-white" onClick={item.action}>
                       {item.actionLabel}
                     </button>
                   ) : null}
@@ -233,7 +241,7 @@ export default function TasksPanel({ vehicle, legalSummary = {} }) {
           </div>
         ) : (
           <div className="mt-4 rounded-2xl border border-border-light bg-background-light px-4 py-3 text-sm text-subtext-light">
-            초기 설정을 모두 완료했습니다.
+            초기 설정이 모두 완료되었습니다.
           </div>
         )}
       </section>
@@ -242,9 +250,7 @@ export default function TasksPanel({ vehicle, legalSummary = {} }) {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold text-text-light">지금 해야 할 일</h2>
-            <p className="mt-1 text-sm text-subtext-light">
-              긴급 항목과 작성이 필요한 항목을 분리해서 보여줍니다.
-            </p>
+            <p className="mt-1 text-sm text-subtext-light">긴급 항목과 작성 필요 항목을 분리해서 보여줍니다.</p>
           </div>
           {loading ? <span className="text-xs text-subtext-light">불러오는 중...</span> : null}
         </div>
@@ -253,17 +259,13 @@ export default function TasksPanel({ vehicle, legalSummary = {} }) {
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold text-text-light">긴급 교체/점검</p>
-              <span
-                className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                  urgentItems.length ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600"
-                }`}
-              >
+              <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${urgentItems.length ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600"}`}>
                 {urgentItems.length}건
               </span>
             </div>
             {urgentItems.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border-light bg-background-light px-4 py-4 text-sm text-subtext-light">
-                지금 바로 교체하거나 점검해야 할 항목은 없습니다.
+                지금 바로 확인해야 할 긴급 항목은 없습니다.
               </div>
             ) : (
               urgentItems.map((item) => (
@@ -297,7 +299,7 @@ export default function TasksPanel({ vehicle, legalSummary = {} }) {
             </div>
             {inputNeededItems.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border-light bg-background-light px-4 py-4 text-sm text-subtext-light">
-                추가로 작성이 필요한 기본 항목은 없습니다.
+                추가로 입력이 필요한 기본 항목은 없습니다.
               </div>
             ) : (
               inputNeededItems.map((item) => (

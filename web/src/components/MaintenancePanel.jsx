@@ -335,6 +335,21 @@ export default function MaintenancePanel({ vehicle }) {
     setFormModal({ open: true, mode: "create" });
   };
 
+  const handleEditRecord = (record) => {
+    if (!record) return;
+    setFormValues({
+      service_date: record.service_date,
+      title: record.title,
+      service_type: record.service_type,
+      cost: record.cost != null ? String(record.cost) : "",
+      odometer_km: record.odometer_km != null ? String(record.odometer_km) : "",
+      shop_name: record.shop_name || "",
+      notes: record.notes || "",
+    });
+    setDetailSheet({ open: false, record: null });
+    setFormModal({ open: true, mode: "edit", recordId: record.id });
+  };
+
   const handleResetFilters = () => {
     setServiceType("all");
     setRangeFilter("3m");
@@ -441,7 +456,7 @@ export default function MaintenancePanel({ vehicle }) {
         ) : records.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border-light bg-surface-light px-4 py-6 text-center text-sm text-subtext-light shadow-sm">조건에 맞는 정비 기록이 없습니다. 필터를 변경하거나 새 기록을 추가해보세요.</div>
         ) : (
-          records.map((record) => <RecordCard key={record.id} record={record} onClick={() => setDetailSheet({ open: true, record })} />)
+          records.map((record) => <RecordCard key={record.id} record={record} onClick={() => handleEditRecord(record)} />)
         )}
       </section>
 

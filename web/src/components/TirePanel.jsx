@@ -70,6 +70,9 @@ const emptyMetaForm = () => ({
   installed_odo: "",
   recommended_pressure_min: "",
   recommended_pressure_max: "",
+  pressure_check_interval_days: "",
+  age_limit_years: "",
+  distance_limit_km: "",
 });
 
 const emptyServiceForm = (vehicle, type) => ({
@@ -85,6 +88,7 @@ const MISSING_WARNING_MESSAGES = [
   "Measurement timestamp missing.",
   "No pressure measurement recorded yet.",
 ];
+const KPA_PER_PSI = 6.89476;
 
 function toDateTimeLocalString(date) {
   if (!date) return "";
@@ -104,9 +108,61 @@ function toInt(value) {
   return Number.isFinite(n) ? Math.trunc(n) : undefined;
 }
 
+function kpaToPsi(value) {
+  if (value === "" || value === null || value === undefined) return undefined;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return undefined;
+  return n / KPA_PER_PSI;
+}
+
+function psiToKpa(value) {
+  if (value === "" || value === null || value === undefined) return undefined;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return undefined;
+  return n * KPA_PER_PSI;
+}
+
 function isTireMissingInfo(item) {
   const warnings = item?.warnings || [];
   return warnings.length > 0 && warnings.every((warning) => MISSING_WARNING_MESSAGES.includes(warning));
+}
+
+function getTireStatusKey(item) {
+  if (!item) return "muted";
+  if (item.status === "missing") return "muted";
+  if (isTireMissingInfo(item)) return "muted";
+  return item.status ?? "ok";
+}
+
+function getTireGuideItems(summary) {
+  return [
+    {
+      key: "pressure",
+      label: "공기압 점검",
+      value: `최근 ${summary?.pressure_check_interval_days ?? 45}일 이내 권장`,
+    },
+    {
+      key: "age",
+      label: "사용 기간",
+      value: `장착 후 ${summary?.age_limit_years ?? 5}년 이내 권장`,
+    },
+    {
+      key: "distance",
+      label: "주행 거리",
+      value: `장착 후 ${(summary?.distance_limit_km ?? 60000).toLocaleString()}km 이내 권장`,
+    },
+  ];
+}
+
+function getSeasonalPressurePreset() {
+  const month = new Date().getMonth() + 1;
+  if (month === 12 || month <= 2) {
+    return { min: 33, max: 36, label: "겨울 기본값" };
+  }
+  if (month >= 6 && month <= 9) {
+    return { min: 32, max: 35, label: "여름 기본값" };
+  }
+  return { min: 32, max: 36, label: "환절기 기본값" };
 }
 
 export default function TirePanel({ vehicle }) {
@@ -129,6 +185,7 @@ export default function TirePanel({ vehicle }) {
   const [loading, setLoading] = useState(false);
   const [pendingMeasurementDeleteId, setPendingMeasurementDeleteId] = useState(null);
   const [pendingMetaReset, setPendingMetaReset] = useState(false);
+  const seasonalPressurePreset = useMemo(() => getSeasonalPressurePreset(), []);
 
   const selectedSummary = useMemo(() => {
     if (!summary) return null;
@@ -140,7 +197,20 @@ export default function TirePanel({ vehicle }) {
     return POSITIONS.find((item) => item.key === selected)?.label || "선택된 타이어 없음";
   }, [selected, selectedSummary?.position_label]);
 
-  const selectedStatusKey = isTireMissingInfo(selectedSummary) ? "muted" : selectedSummary?.status ?? "ok";
+  const selectedStatusKey = getTireStatusKey(selectedSummary);
+
+  const hydrateMetaForm = (item) => ({
+    brand: item?.brand ?? "",
+    model: item?.model ?? "",
+    size: item?.size ?? "",
+    installed_at: item?.installed_at ?? "",
+    installed_odo: item?.installed_odo ?? "",
+    recommended_pressure_min: item?.recommended_pressure_min != null ? Number(kpaToPsi(item.recommended_pressure_min).toFixed(1)) : seasonalPressurePreset.min,
+    recommended_pressure_max: item?.recommended_pressure_max != null ? Number(kpaToPsi(item.recommended_pressure_max).toFixed(1)) : seasonalPressurePreset.max,
+    pressure_check_interval_days: item?.pressure_check_interval_days ?? "",
+    age_limit_years: item?.age_limit_years ?? "",
+    distance_limit_km: item?.distance_limit_km ?? "",
+  });
 
   useEffect(() => {
     if (!vehicle) return;
@@ -172,15 +242,7 @@ export default function TirePanel({ vehicle }) {
 
   useEffect(() => {
     if (selectedSummary && !metaEditing) {
-      setMetaForm({
-        brand: selectedSummary.brand ?? "",
-        model: selectedSummary.model ?? "",
-        size: selectedSummary.size ?? "",
-        installed_at: selectedSummary.installed_at ?? "",
-        installed_odo: selectedSummary.installed_odo ?? "",
-        recommended_pressure_min: selectedSummary.recommended_pressure_min ?? "",
-        recommended_pressure_max: selectedSummary.recommended_pressure_max ?? "",
-      });
+      setMetaForm(hydrateMetaForm(selectedSummary));
     }
   }, [selectedSummary, metaEditing]);
 
@@ -237,8 +299,11 @@ export default function TirePanel({ vehicle }) {
         size: metaForm.size || undefined,
         installed_at: metaForm.installed_at || undefined,
         installed_odo: toInt(metaForm.installed_odo),
-        recommended_pressure_min: toFloat(metaForm.recommended_pressure_min),
-        recommended_pressure_max: toFloat(metaForm.recommended_pressure_max),
+        recommended_pressure_min: psiToKpa(metaForm.recommended_pressure_min) ?? psiToKpa(seasonalPressurePreset.min),
+        recommended_pressure_max: psiToKpa(metaForm.recommended_pressure_max) ?? psiToKpa(seasonalPressurePreset.max),
+        pressure_check_interval_days: toInt(metaForm.pressure_check_interval_days),
+        age_limit_years: toInt(metaForm.age_limit_years),
+        distance_limit_km: toInt(metaForm.distance_limit_km),
       };
       await api.put(`/tires/${selected}`, payload, {
         params: { vehicleId: vehicle.id },
@@ -267,7 +332,7 @@ export default function TirePanel({ vehicle }) {
         : new Date();
       const payload = {
         measured_at: measuredAt.toISOString(),
-        pressure_kpa: toFloat(measurementForm.pressure_kpa),
+        pressure_kpa: psiToKpa(measurementForm.pressure_kpa),
         tread_depth_mm: toFloat(measurementForm.tread_depth_mm),
         temperature_c: toFloat(measurementForm.temperature_c),
       };
@@ -350,10 +415,18 @@ export default function TirePanel({ vehicle }) {
     }
   };
 
+  const handleSelectedChange = (nextSelected) => {
+    setSelected(nextSelected);
+    if (metaEditing && summary?.tires) {
+      const nextItem = summary.tires.find((item) => item.position === nextSelected);
+      setMetaForm(hydrateMetaForm(nextItem));
+    }
+  };
+
   const handleMeasurementEdit = (row) => {
     setMeasurementForm({
       measured_at: row?.measured_at ? toDateTimeLocalString(new Date(row.measured_at)) : toDateTimeLocalString(new Date()),
-      pressure_kpa: row?.pressure_kpa ?? "",
+      pressure_kpa: row?.pressure_kpa != null ? Number(kpaToPsi(row.pressure_kpa).toFixed(1)) : "",
       tread_depth_mm: row?.tread_depth_mm ?? "",
       temperature_c: row?.temperature_c ?? "",
     });
@@ -399,6 +472,7 @@ export default function TirePanel({ vehicle }) {
   };
 
   const latestMeasurement = history.measurements?.[0];
+  const guideItems = useMemo(() => getTireGuideItems(selectedSummary), [selectedSummary]);
   const quickStats = [
     {
       key: "pressure",
@@ -406,7 +480,7 @@ export default function TirePanel({ vehicle }) {
       icon: "compress",
       value:
         latestMeasurement?.pressure_kpa != null
-          ? `${latestMeasurement.pressure_kpa.toFixed(1)} ${selectedSummary?.pressure_unit ?? "kPa"}`
+          ? `${kpaToPsi(latestMeasurement.pressure_kpa).toFixed(1)} PSI`
           : "기록 없음",
       caption: selectedSummary ? `권장: ${renderPressureRange(selectedSummary)}` : null,
     },
@@ -461,7 +535,7 @@ export default function TirePanel({ vehicle }) {
                 <div className="absolute inset-y-8 left-1/2 w-12 -translate-x-1/2 rounded-full bg-border-light/70" />
                 {POSITIONS.map((pos) => {
                   const item = summary?.tires.find((t) => t.position === pos.key);
-                  const status = isTireMissingInfo(item) ? "muted" : item?.status ?? "ok";
+                  const status = getTireStatusKey(item);
                   const ring = STATUS_RING[status] ?? STATUS_RING.ok;
                   const isActive = selected === pos.key;
                   return (
@@ -469,7 +543,7 @@ export default function TirePanel({ vehicle }) {
                       key={pos.key}
                       type="button"
                       style={POSITION_STYLES[pos.key]}
-                      onClick={() => setSelected(pos.key)}
+                      onClick={() => handleSelectedChange(pos.key)}
                       className={`absolute flex flex-col items-center transition-transform ${isActive ? "scale-125" : "scale-100"}`}
                     >
                       <span
@@ -480,7 +554,7 @@ export default function TirePanel({ vehicle }) {
                       <span className="mt-1 text-[11px] font-semibold text-text-light">{pos.label}</span>
                       {item?.last_measurement?.pressure_kpa != null && (
                         <span className="mt-0.5 text-[10px] text-subtext-light">
-                          {item.last_measurement.pressure_kpa.toFixed(1)} kPa
+                          {kpaToPsi(item.last_measurement.pressure_kpa).toFixed(1)} PSI
                         </span>
                       )}
                     </button>
@@ -494,18 +568,47 @@ export default function TirePanel({ vehicle }) {
                 <p className="text-xs font-semibold uppercase text-subtext-light">최근 계측값</p>
                 <p className="text-sm text-subtext-light">가장 최근에 저장한 공기압, 트레드, 온도를 확인하세요.</p>
               </div>
+              {selectedSummary?.next_action ? (
+                <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-primary">다음 작업</p>
+                  <p className="mt-1 text-sm font-semibold text-text-light">{selectedSummary.next_action}</p>
+                </div>
+              ) : null}
               <div className="grid grid-cols-3 gap-2">
                 {quickStats.map((stat) => (
-                  <div key={stat.key} className="rounded-2xl border border-border-light bg-background-light p-4 text-left shadow-sm">
+                  <button
+                    key={stat.key}
+                    type="button"
+                    className="rounded-2xl border border-border-light bg-background-light p-4 text-left shadow-sm transition hover:border-primary/40"
+                    onClick={() => {
+                      if (latestMeasurement) {
+                        handleMeasurementEdit(latestMeasurement);
+                      } else {
+                        setMeasurementForm(emptyMeasurementForm());
+                        setEditingMeasurementId(null);
+                        setMeasurementModalOpen(true);
+                      }
+                    }}
+                  >
                     <div className="flex items-center gap-2 text-subtext-light">
                       <span className="material-symbols-outlined text-base text-primary">{stat.icon}</span>
                       <span className="text-xs font-semibold uppercase tracking-wide">{stat.label}</span>
                     </div>
                     <p className="mt-2 text-xl font-bold text-text-light">{stat.value}</p>
                     {stat.caption ? <p className="text-xs text-subtext-light">{stat.caption}</p> : null}
-                  </div>
+                  </button>
                 ))}
               </div>
+              {selectedSummary?.warnings?.length ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
+                  <p className="font-semibold">{selectedStatusKey === "muted" ? "작성 필요 사유" : "점검 필요 사유"}</p>
+                  <ul className="mt-2 list-disc space-y-1 pl-5">
+                    {selectedSummary.warnings.map((warning, idx) => (
+                      <li key={`summary-warning-${idx}`}>{localizeTireWarning(warning)}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-xs text-subtext-light">측정값은 최신 기록을 기준으로 계산됩니다.</p>
                 <button
@@ -523,6 +626,21 @@ export default function TirePanel({ vehicle }) {
               </div>
             </section>
 
+            <section className="rounded-2xl border border-border-light bg-surface-light p-5 shadow-card space-y-4">
+              <div>
+                <p className="text-xs font-semibold uppercase text-subtext-light">관리 기준</p>
+                <p className="text-sm text-subtext-light">타이어 상태는 아래 기준을 바탕으로 자동으로 안내됩니다.</p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {guideItems.map((item) => (
+                  <div key={item.key} className="rounded-2xl border border-border-light bg-background-light p-4 shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-subtext-light">{item.label}</p>
+                    <p className="mt-2 text-sm font-semibold text-text-light">{item.value}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+
             <section className="rounded-2xl border border-border-light bg-surface-light p-5 shadow-card">
               <h3 className="text-base font-semibold text-text-light">서비스 작업</h3>
               <p className="text-sm text-subtext-light">교체 이력과 정비소 방문을 등록하세요.</p>
@@ -536,17 +654,17 @@ export default function TirePanel({ vehicle }) {
         ) : (
           <>
             <section className="rounded-2xl border border-border-light bg-surface-light p-5 shadow-card space-y-4">
-              <header className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-base font-semibold text-text-light">기본 정보</h3>
-                  <p className="text-sm text-subtext-light">브랜드, 사이즈, 장착 정보와 목표치를 관리하세요.</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="relative">
+              <header className="space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-base font-semibold text-text-light">기본 정보</h3>
+                    <p className="text-sm text-subtext-light">브랜드, 사이즈, 장착 정보와 목표치를 관리하세요.</p>
+                  </div>
+                  <div className="relative shrink-0">
                     <select
-                      className="appearance-none rounded-full border border-border-light bg-primary/10 py-1 pl-3 pr-8 text-xs font-semibold text-primary transition hover:bg-primary/20"
+                      className="appearance-none rounded-full border border-border-light bg-background-light py-2 pl-3 pr-9 text-xs font-semibold text-subtext-light transition hover:border-primary/40 hover:text-primary"
                       value={selected}
-                      onChange={(e) => setSelected(e.target.value)}
+                      onChange={(e) => handleSelectedChange(e.target.value)}
                       aria-label="타이어 위치 선택"
                     >
                       {POSITIONS.map((item) => (
@@ -555,45 +673,53 @@ export default function TirePanel({ vehicle }) {
                         </option>
                       ))}
                     </select>
-                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-primary">
-                      v
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-base text-subtext-light">
+                      expand_more
                     </span>
                   </div>
-                  {!metaEditing ? (
-                    <>
-                      <button
-                        type="button"
-                        className="rounded-full border border-border-light bg-background-light px-3 py-1 text-xs font-semibold text-subtext-light transition hover:text-primary"
-                        onClick={() => setMetaEditing(true)}
-                      >
-                        입력/수정
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-100"
-                        onClick={() => setPendingMetaReset(true)}
-                      >
-                        초기화
-                      </button>
-                    </>
-                  ) : null}
                 </div>
+                {!metaEditing ? (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary/20"
+                      onClick={() => setMetaEditing(true)}
+                    >
+                      입력/수정
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-100"
+                      onClick={() => setPendingMetaReset(true)}
+                    >
+                      초기화
+                    </button>
+                  </div>
+                ) : null}
               </header>
 
               {!metaEditing ? (
-                <div className="grid grid-cols-1 gap-3 text-sm">
-                  <InfoRow label="브랜드" value={selectedSummary?.brand || "-"} />
-                  <InfoRow label="모델" value={selectedSummary?.model || "-"} />
-                  <InfoRow label="사이즈" value={selectedSummary?.size || "-"} />
-                  <InfoRow label="장착일" value={selectedSummary?.installed_at || "-"} />
-                  <InfoRow
-                    label="장착 시 주행거리"
-                    value={selectedSummary?.installed_odo != null ? `${selectedSummary.installed_odo.toLocaleString()} km` : "-"}
-                  />
-                  <InfoRow label="권장 공기압" value={renderPressureRange(selectedSummary)} />
+                <div className="space-y-4 text-sm">
+                  <div className="grid grid-cols-2 gap-3">
+                    <SummaryValueCard label="브랜드" value={selectedSummary?.brand || "-"} />
+                    <SummaryValueCard label="모델" value={selectedSummary?.model || "-"} />
+                    <SummaryValueCard label="사이즈" value={selectedSummary?.size || "-"} />
+                    <SummaryValueCard label="장착일" value={selectedSummary?.installed_at || "-"} />
+                    <SummaryValueCard
+                      label="장착 시 주행거리"
+                      value={selectedSummary?.installed_odo != null ? `${selectedSummary.installed_odo.toLocaleString()} km` : "-"}
+                    />
+                    <SummaryValueCard label="권장 공기압" value={renderPressureRange(selectedSummary)} />
+                  </div>
+                  {selectedSummary?.next_action ? (
+                    <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm">
+                      <p className="font-semibold text-primary">다음 작업</p>
+                      <p className="mt-1 text-text-light">{selectedSummary.next_action}</p>
+                    </div>
+                  ) : null}
                   {selectedSummary?.warnings?.length ? (
                     <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-                      <p className="font-semibold">알림</p>
+                      <p className="font-semibold">{selectedStatusKey === "muted" ? "작성 필요" : "알림"}</p>
                       <ul className="mt-1 list-disc space-y-1 pl-5">
                         {selectedSummary.warnings.map((warning, idx) => (
                           <li key={idx}>{localizeTireWarning(warning)}</li>
@@ -614,8 +740,32 @@ export default function TirePanel({ vehicle }) {
                     <input type="number" className={INPUT_CLASS} placeholder="장착 시 주행거리" value={metaForm.installed_odo} onChange={(e) => setMetaForm((prev) => ({ ...prev, installed_odo: e.target.value }))} />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <input type="number" step="0.1" className={INPUT_CLASS} placeholder="최소 공기압 (kPa)" value={metaForm.recommended_pressure_min} onChange={(e) => setMetaForm((prev) => ({ ...prev, recommended_pressure_min: e.target.value }))} />
-                    <input type="number" step="0.1" className={INPUT_CLASS} placeholder="최대 공기압 (kPa)" value={metaForm.recommended_pressure_max} onChange={(e) => setMetaForm((prev) => ({ ...prev, recommended_pressure_max: e.target.value }))} />
+                    <input type="number" step="0.1" className={INPUT_CLASS} placeholder={`최소 공기압 (기본 ${seasonalPressurePreset.min} PSI)`} value={metaForm.recommended_pressure_min} onChange={(e) => setMetaForm((prev) => ({ ...prev, recommended_pressure_min: e.target.value }))} />
+                    <input type="number" step="0.1" className={INPUT_CLASS} placeholder={`최대 공기압 (기본 ${seasonalPressurePreset.max} PSI)`} value={metaForm.recommended_pressure_max} onChange={(e) => setMetaForm((prev) => ({ ...prev, recommended_pressure_max: e.target.value }))} />
+                  </div>
+                  <p className="text-[11px] text-subtext-light">{seasonalPressurePreset.label} 기준으로 기본값 {seasonalPressurePreset.min}~{seasonalPressurePreset.max}PSI가 자동 적용됩니다.</p>
+                  <div className="rounded-2xl border border-border-light bg-background-light p-4 space-y-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-subtext-light">관리 기준 조정</p>
+                      <p className="mt-1 text-sm text-subtext-light">기본값으로 충분하지만, 차량 운행 패턴에 맞게 기준을 바꿀 수 있습니다.</p>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3">
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-subtext-light">공기압 점검 주기(일)</p>
+                        <p className="text-[11px] text-subtext-light">최근 공기압 측정 후 몇 일이 지나면 점검 필요로 볼지 정합니다.</p>
+                        <input type="number" className={INPUT_CLASS} placeholder="예: 45" value={metaForm.pressure_check_interval_days} onChange={(e) => setMetaForm((prev) => ({ ...prev, pressure_check_interval_days: e.target.value }))} />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-subtext-light">사용 기간 기준(년)</p>
+                        <p className="text-[11px] text-subtext-light">장착일로부터 몇 년이 지나면 교체 점검 대상으로 볼지 정합니다.</p>
+                        <input type="number" className={INPUT_CLASS} placeholder="예: 5" value={metaForm.age_limit_years} onChange={(e) => setMetaForm((prev) => ({ ...prev, age_limit_years: e.target.value }))} />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-subtext-light">주행거리 기준(km)</p>
+                        <p className="text-[11px] text-subtext-light">장착 후 누적 주행거리가 얼마를 넘으면 점검 필요로 볼지 정합니다.</p>
+                        <input type="number" className={INPUT_CLASS} placeholder="예: 60000" value={metaForm.distance_limit_km} onChange={(e) => setMetaForm((prev) => ({ ...prev, distance_limit_km: e.target.value }))} />
+                      </div>
+                    </div>
                   </div>
                   <div className="flex gap-3">
                     <button disabled={loading} className={PRIMARY_BUTTON_CLASS} onClick={handleMetaSave} type="button">
@@ -633,8 +783,11 @@ export default function TirePanel({ vehicle }) {
                             size: selectedSummary.size ?? "",
                             installed_at: selectedSummary.installed_at ?? "",
                             installed_odo: selectedSummary.installed_odo ?? "",
-                            recommended_pressure_min: selectedSummary.recommended_pressure_min ?? "",
-                            recommended_pressure_max: selectedSummary.recommended_pressure_max ?? "",
+                            recommended_pressure_min: selectedSummary.recommended_pressure_min != null ? Number(kpaToPsi(selectedSummary.recommended_pressure_min).toFixed(1)) : seasonalPressurePreset.min,
+                            recommended_pressure_max: selectedSummary.recommended_pressure_max != null ? Number(kpaToPsi(selectedSummary.recommended_pressure_max).toFixed(1)) : seasonalPressurePreset.max,
+                            pressure_check_interval_days: selectedSummary.pressure_check_interval_days ?? "",
+                            age_limit_years: selectedSummary.age_limit_years ?? "",
+                            distance_limit_km: selectedSummary.distance_limit_km ?? "",
                           });
                         } else {
                           setMetaForm(emptyMetaForm());
@@ -689,9 +842,10 @@ export default function TirePanel({ vehicle }) {
                       {history.measurements.map((row) => (
                         <HistoryCard
                           key={row.id}
+                          onClick={() => handleMeasurementEdit(row)}
                           title={new Date(row.measured_at).toLocaleString()}
                           lines={[
-                            { label: "공기압", value: row.pressure_kpa != null ? `${row.pressure_kpa.toFixed(1)} kPa` : "-" },
+                            { label: "공기압", value: row.pressure_kpa != null ? `${kpaToPsi(row.pressure_kpa).toFixed(1)} PSI` : "-" },
                             { label: "트레드", value: row.tread_depth_mm != null ? `${row.tread_depth_mm.toFixed(1)} mm` : "-" },
                             { label: "온도", value: row.temperature_c != null ? `${row.temperature_c.toFixed(1)} ℃` : "-" },
                           ]}
@@ -700,14 +854,20 @@ export default function TirePanel({ vehicle }) {
                               <button
                                 type="button"
                                 className="rounded-full border border-border-light px-3 py-1 text-xs font-semibold text-subtext-light transition hover:text-primary"
-                                onClick={() => handleMeasurementEdit(row)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMeasurementEdit(row);
+                                }}
                               >
                                 수정
                               </button>
                               <button
                                 type="button"
                                 className="rounded-full border border-red-200 px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50"
-                                onClick={() => setPendingMeasurementDeleteId(row.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPendingMeasurementDeleteId(row.id);
+                                }}
                               >
                                 삭제
                               </button>
@@ -767,7 +927,7 @@ export default function TirePanel({ vehicle }) {
           >
             <div className="space-y-3">
               <input type="datetime-local" className={INPUT_CLASS} value={measurementForm.measured_at} onChange={(e) => setMeasurementForm((prev) => ({ ...prev, measured_at: e.target.value }))} required />
-              <input type="number" step="0.1" className={INPUT_CLASS} placeholder="공기압 (kPa)" value={measurementForm.pressure_kpa} onChange={(e) => setMeasurementForm((prev) => ({ ...prev, pressure_kpa: e.target.value }))} />
+              <input type="number" step="0.1" className={INPUT_CLASS} placeholder="공기압 (PSI)" value={measurementForm.pressure_kpa} onChange={(e) => setMeasurementForm((prev) => ({ ...prev, pressure_kpa: e.target.value }))} />
               <input type="number" step="0.1" className={INPUT_CLASS} placeholder="트레드 깊이 (mm)" value={measurementForm.tread_depth_mm} onChange={(e) => setMeasurementForm((prev) => ({ ...prev, tread_depth_mm: e.target.value }))} />
               <input type="number" step="0.1" className={INPUT_CLASS} placeholder="온도 (℃)" value={measurementForm.temperature_c} onChange={(e) => setMeasurementForm((prev) => ({ ...prev, temperature_c: e.target.value }))} />
             </div>
@@ -834,6 +994,15 @@ function InfoRow({ label, value, compact }) {
   );
 }
 
+function SummaryValueCard({ label, value }) {
+  return (
+    <div className="rounded-2xl border border-border-light bg-background-light p-4 shadow-sm">
+      <p className="text-[11px] uppercase tracking-wide text-subtext-light">{label}</p>
+      <p className="mt-2 text-sm font-semibold text-text-light">{value || "-"}</p>
+    </div>
+  );
+}
+
 function ActionButton({ label, onClick }) {
   return (
     <button
@@ -845,9 +1014,12 @@ function ActionButton({ label, onClick }) {
   );
 }
 
-function HistoryCard({ title, lines, actions }) {
+function HistoryCard({ title, lines, actions, onClick }) {
   return (
-    <div className="rounded-2xl border border-border-light bg-background-light p-4 text-sm shadow-sm">
+    <div
+      className={`rounded-2xl border border-border-light bg-background-light p-4 text-sm shadow-sm ${onClick ? "cursor-pointer transition hover:border-primary/40" : ""}`}
+      onClick={onClick}
+    >
       <p className="font-semibold text-text-light">{title}</p>
       <div className="mt-2 space-y-1">
         {lines.map((line, idx) => (
@@ -884,19 +1056,19 @@ function Modal({ title, onClose, children, actions }) {
 }
 
 function renderPressureRange(item) {
-  if (!item?.recommended_pressure_min) return "-";
-  const min = item.recommended_pressure_min;
-  const max = item.recommended_pressure_max;
+  const preset = getSeasonalPressurePreset();
+  const min = item?.recommended_pressure_min != null ? kpaToPsi(item.recommended_pressure_min) : preset.min;
+  const max = item?.recommended_pressure_max != null ? kpaToPsi(item.recommended_pressure_max) : preset.max;
+  const suffix = item?.recommended_pressure_min ? "" : ` (${preset.label})`;
   if (!max || max === min) {
-    return `${min}${item.pressure_unit || "kPa"}`;
+    return `${Number(min).toFixed(1)} PSI${suffix}`;
   }
-  return `${min}${item.pressure_unit || "kPa"} - ${max}${item.pressure_unit || "kPa"}`;
+  return `${Number(min).toFixed(1)} PSI - ${Number(max).toFixed(1)} PSI${suffix}`;
 }
 
 function localizeTireWarning(message) {
   const mapping = {
     "No tire metadata registered yet.": "타이어 기본 정보가 아직 없습니다.",
-    "Last pressure check was over 45 days ago.": "최근 공기압 점검 기록이 45일 이상 지났습니다.",
     "Measurement timestamp missing.": "측정 시각 정보가 없습니다.",
     "Pressure is far outside the recommended range.": "공기압이 권장 범위를 크게 벗어났습니다.",
     "Pressure is outside the recommended range.": "공기압이 권장 범위를 벗어났습니다.",
@@ -904,9 +1076,19 @@ function localizeTireWarning(message) {
     "Tread depth is at or below 3mm. Plan a replacement soon.": "트레드 깊이가 3mm 이하입니다. 교체를 준비해주세요.",
     "No pressure measurement recorded yet.": "공기압 측정 기록이 없습니다.",
     "No Pressure measurement recorded yet.": "공기압 측정 기록이 없습니다.",
-    "Tire has been in service for more than 5 years.": "장착 후 5년 이상 경과했습니다.",
-    "Tire has covered more than 60,000 km since installation.": "장착 후 60,000km 이상 주행했습니다.",
   };
+  if (message?.startsWith("Last pressure check was over ")) {
+    const days = message.match(/over (\d+) days/)?.[1];
+    return `최근 공기압 점검 기록이 ${days || "기준"} 이상 지났습니다.`;
+  }
+  if (message?.startsWith("Tire has been in service for more than ")) {
+    const years = message.match(/more than (\d+) years/)?.[1];
+    return `장착 후 ${years || "기준"}년 이상 경과했습니다.`;
+  }
+  if (message?.startsWith("Tire has covered more than ")) {
+    const km = message.match(/more than ([\d,]+) km/)?.[1];
+    return `장착 후 ${km || "기준"}km 이상 주행했습니다.`;
+  }
   return mapping[message] || message || "작성 필요";
 }
 

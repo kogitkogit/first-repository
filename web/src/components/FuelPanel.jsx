@@ -94,7 +94,7 @@ function CenterModal({ title, onClose, children, onSave, saveLabel = "저장" })
 
 function RecordCard({ title, record, chips, onView, onEdit, onDelete }) {
   return (
-    <div className="rounded-2xl border border-border-light bg-surface-light p-4 shadow-sm transition hover:border-primary/40">
+    <div className="rounded-2xl border border-border-light bg-surface-light p-4 shadow-sm transition hover:border-primary/40 cursor-pointer" onClick={onEdit}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs text-subtext-light">{record.date}</p>
@@ -102,13 +102,13 @@ function RecordCard({ title, record, chips, onView, onEdit, onDelete }) {
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-subtext-light">{chips}</div>
         </div>
         <div className="flex flex-col gap-2">
-          <button type="button" className="rounded-full border border-border-light px-3 py-1 text-xs font-semibold text-subtext-light hover:text-primary" onClick={onView}>
+          <button type="button" className="rounded-full border border-border-light px-3 py-1 text-xs font-semibold text-subtext-light hover:text-primary" onClick={(e) => { e.stopPropagation(); onView(); }}>
             상세
           </button>
-          <button type="button" className="rounded-full border border-border-light px-3 py-1 text-xs font-semibold text-subtext-light hover:text-primary" onClick={onEdit}>
+          <button type="button" className="rounded-full border border-border-light px-3 py-1 text-xs font-semibold text-subtext-light hover:text-primary" onClick={(e) => { e.stopPropagation(); onEdit(); }}>
             수정
           </button>
-          <button type="button" className="rounded-full border border-red-200 px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-50" onClick={onDelete}>
+          <button type="button" className="rounded-full border border-red-200 px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-50" onClick={(e) => { e.stopPropagation(); onDelete(); }}>
             삭제
           </button>
         </div>

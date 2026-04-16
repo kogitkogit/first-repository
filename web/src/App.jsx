@@ -49,26 +49,30 @@ const mapLegalSummary = (data) => {
   const insurance = data.insurance
     ? {
         ...data.insurance,
-        expiry_date: data.insurance.expiry_date,
+        expiry_date: data.insurance.expiry_date ?? data.insurance.date ?? null,
       }
     : null;
 
   const inspection = data.inspection
     ? {
-        inspection_date: data.inspection.inspection_date,
-        next_inspection_date: data.inspection.next_inspection_date,
-        last: data.inspection.last,
-        next: data.inspection.next,
+        inspection_date: data.inspection.inspection_date ?? data.inspection.date ?? null,
+        next_inspection_date: data.inspection.next_inspection_date ?? data.inspection.next_date ?? null,
+        last: data.inspection.last ?? data.inspection.date ?? null,
+        next: data.inspection.next ?? data.inspection.next_date ?? null,
+        label: data.inspection.label ?? null,
+        memo: data.inspection.memo ?? null,
       }
     : null;
 
   const tax = data.tax
     ? {
-        tax_due_date: data.tax.tax_due_date,
+        tax_due_date: data.tax.tax_due_date ?? data.tax.date ?? null,
         paid: data.tax.paid,
         tone: data.tax.tone,
         days_remaining: data.tax.days_remaining,
         label: data.tax.label,
+        amount: data.tax.amount ?? null,
+        memo: data.tax.memo ?? null,
       }
     : null;
 

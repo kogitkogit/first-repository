@@ -31,6 +31,9 @@ class TireMetaUpdate(BaseModel):
     recommended_pressure_min: Optional[float] = None
     recommended_pressure_max: Optional[float] = None
     pressure_unit: Optional[str] = None
+    pressure_check_interval_days: Optional[int] = None
+    age_limit_years: Optional[int] = None
+    distance_limit_km: Optional[int] = None
     notes: Optional[str] = None
 
 
@@ -72,9 +75,13 @@ class TireSummaryItem(BaseModel):
     recommended_pressure_min: Optional[float] = None
     recommended_pressure_max: Optional[float] = None
     pressure_unit: str = "kPa"
+    pressure_check_interval_days: Optional[int] = None
+    age_limit_years: Optional[int] = None
+    distance_limit_km: Optional[int] = None
     notes: Optional[str] = None
     status: str
     warnings: List[str]
+    next_action: Optional[str] = None
     last_measurement: Optional[TireMeasurementOut] = None
     last_service: Optional[TireServiceRecordOut] = None
 

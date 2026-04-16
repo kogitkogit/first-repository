@@ -25,6 +25,10 @@ router = APIRouter(prefix="/tires", tags=["tires"])
 
 STATUS_ORDER = {"ok": 0, "warning": 1, "critical": 2}
 POSITION_ORDER = [pos for pos in TirePosition]
+PRESSURE_CHECK_WARN_DAYS = 45
+TIRE_AGE_WARN_DAYS = 5 * 365
+TIRE_DISTANCE_WARN_KM = 60000
+TIRE_AGE_WARN_YEARS = 5
 
 
 def ensure_vehicle(vehicle_id: int, user: User, db: Session) -> Vehicle:
@@ -86,14 +90,17 @@ def compute_summary_item(
     last_measurement: Optional[TireMeasurement],
     last_service: Optional[TireServiceRecord],
 ) -> TireSummaryItem:
+    missing_items: List[str] = []
     warnings: List[str] = []
-    status = "ok"
+    critical_items: List[str] = []
     pressure_unit = tire.pressure_unit if tire and tire.pressure_unit else "kPa"
     today = date.today()
+    pressure_check_warn_days = tire.pressure_check_interval_days if tire and tire.pressure_check_interval_days else PRESSURE_CHECK_WARN_DAYS
+    age_limit_years = tire.age_limit_years if tire and tire.age_limit_years else TIRE_AGE_WARN_YEARS
+    age_warn_days = age_limit_years * 365
+    distance_warn_km = tire.distance_limit_km if tire and tire.distance_limit_km else TIRE_DISTANCE_WARN_KM
 
     if tire is None:
-        warnings.append("No tire metadata registered yet.")
-        status = escalate_status(status, "warning")
         return TireSummaryItem(
             position=position.value,
             position_label=position.label,
@@ -106,9 +113,13 @@ def compute_summary_item(
             recommended_pressure_min=None,
             recommended_pressure_max=None,
             pressure_unit=pressure_unit,
+            pressure_check_interval_days=PRESSURE_CHECK_WARN_DAYS,
+            age_limit_years=TIRE_AGE_WARN_YEARS,
+            distance_limit_km=TIRE_DISTANCE_WARN_KM,
             notes=None,
-            status=status,
-            warnings=warnings,
+            status="missing",
+            warnings=["No tire metadata registered yet."],
+            next_action="타이어 기본 정보를 먼저 입력하세요.",
             last_measurement=None,
             last_service=None,
         )
@@ -118,12 +129,10 @@ def compute_summary_item(
         measure_dt = to_utc_naive(last_measurement.measured_at)
         if measure_dt:
             days_since = (datetime.utcnow() - measure_dt).days
-            if days_since > 45:
-                warnings.append("Last pressure check was over 45 days ago.")
-                status = escalate_status(status, "warning")
+            if days_since > pressure_check_warn_days:
+                warnings.append(f"Last pressure check was over {pressure_check_warn_days} days ago.")
         else:
-            warnings.append("Measurement timestamp missing.")
-            status = escalate_status(status, "warning")
+            missing_items.append("Measurement timestamp missing.")
 
         pressure = last_measurement.pressure_kpa
         if pressure is not None and tire.recommended_pressure_min:
@@ -132,39 +141,66 @@ def compute_summary_item(
             upper_soft = target_max * 1.1
             lower_soft = target_min * 0.9
             if pressure < lower_soft or pressure > upper_soft:
-                warnings.append("Pressure is far outside the recommended range.")
-                status = escalate_status(status, "critical")
+                critical_items.append("Pressure is far outside the recommended range.")
             elif pressure < target_min or pressure > target_max:
                 warnings.append("Pressure is outside the recommended range.")
-                status = escalate_status(status, "warning")
 
         depth = last_measurement.tread_depth_mm
         if depth is not None:
             if depth <= 2.0:
-                warnings.append("Tread depth is at or below 2mm. Replace immediately.")
-                status = escalate_status(status, "critical")
+                critical_items.append("Tread depth is at or below 2mm. Replace immediately.")
             elif depth <= 3.0:
                 warnings.append("Tread depth is at or below 3mm. Plan a replacement soon.")
-                status = escalate_status(status, "warning")
 
         measurement_out = TireMeasurementOut.model_validate(last_measurement)
     else:
-        warnings.append("No pressure measurement recorded yet.")
-        status = escalate_status(status, "warning")
+        missing_items.append("No pressure measurement recorded yet.")
 
-    if tire.installed_at and (today - tire.installed_at).days > 5 * 365:
-        warnings.append("Tire has been in service for more than 5 years.")
-        status = escalate_status(status, "warning")
+    if tire.installed_at and (today - tire.installed_at).days > age_warn_days:
+        warnings.append(f"Tire has been in service for more than {age_limit_years} years.")
 
     if tire.installed_odo is not None and vehicle.odo_km is not None:
         distance = vehicle.odo_km - tire.installed_odo
-        if distance > 60000:
-            warnings.append("Tire has covered more than 60,000 km since installation.")
-            status = escalate_status(status, "warning")
+        if distance > distance_warn_km:
+            warnings.append(f"Tire has covered more than {distance_warn_km:,} km since installation.")
 
     service_out = (
         TireServiceRecordOut.model_validate(last_service) if last_service else None
     )
+
+    all_messages = [*critical_items, *warnings, *missing_items]
+    if critical_items:
+        status = "critical"
+    elif warnings:
+        status = "warning"
+    elif missing_items:
+        status = "missing"
+    else:
+        status = "ok"
+
+    pressure_warning_present = any(
+        message.startswith("Pressure is outside the recommended range.")
+        or message.startswith("Last pressure check was over ")
+        for message in warnings
+    )
+    lifecycle_warning_present = any(
+        message.startswith("Tire has covered more than ")
+        or message.startswith("Tire has been in service for more than ")
+        for message in warnings
+    )
+
+    if critical_items:
+        next_action = "타이어 교체 또는 정비가 필요합니다. 상세 기록을 확인하세요."
+    elif pressure_warning_present:
+        next_action = "공기압을 다시 점검하고 최신 계측값을 기록하세요."
+    elif lifecycle_warning_present:
+        next_action = "타이어 상태를 점검하고 교체 시기를 확인하세요."
+    elif "Measurement timestamp missing." in missing_items or "No pressure measurement recorded yet." in missing_items:
+        next_action = "계측값을 먼저 기록하세요."
+    elif "No tire metadata registered yet." in missing_items:
+        next_action = "타이어 기본 정보를 먼저 입력하세요."
+    else:
+        next_action = None
 
     return TireSummaryItem(
         position=position.value,
@@ -178,9 +214,13 @@ def compute_summary_item(
         recommended_pressure_min=tire.recommended_pressure_min,
         recommended_pressure_max=tire.recommended_pressure_max,
         pressure_unit=pressure_unit,
+        pressure_check_interval_days=pressure_check_warn_days,
+        age_limit_years=age_limit_years,
+        distance_limit_km=distance_warn_km,
         notes=tire.notes,
         status=status,
-        warnings=warnings,
+        warnings=all_messages,
+        next_action=next_action,
         last_measurement=measurement_out,
         last_service=service_out,
     )
@@ -340,6 +380,9 @@ def reset_tire_meta(
         "installed_odo",
         "recommended_pressure_min",
         "recommended_pressure_max",
+        "pressure_check_interval_days",
+        "age_limit_years",
+        "distance_limit_km",
         "notes",
     ]:
         setattr(tire, field, None)
