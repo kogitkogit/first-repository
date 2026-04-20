@@ -27,7 +27,22 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins(self) -> list[str]:
-        return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
+        required_origins = [
+            "http://localhost",
+            "https://localhost",
+            "http://127.0.0.1",
+            "https://127.0.0.1",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "capacitor://localhost",
+            "ionic://localhost",
+        ]
+        configured = [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
+        merged: list[str] = []
+        for origin in [*configured, *required_origins]:
+            if origin not in merged:
+                merged.append(origin)
+        return merged
 
 
 settings = Settings()
