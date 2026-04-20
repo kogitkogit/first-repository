@@ -170,7 +170,7 @@ export default function LoginScreen({ onLoginSuccess }) {
               onClick={() => setMode("register")}
             >
               <span className="text-base font-bold">회원가입해서 시작하기</span>
-              <span className="mt-1 text-sm text-subtext-light">계정으로 로그인해 데이터를 백업하고 복구할 수 있습니다.</span>
+              <span className="mt-1 text-sm text-subtext-light">계정으로 로그인해 데이터를 백업, 복구할 수 있습니다.</span>
             </button>
 
             <button
@@ -180,7 +180,7 @@ export default function LoginScreen({ onLoginSuccess }) {
               disabled={loading}
             >
               <span className="text-base font-bold">비회원으로 시작하기</span>
-              <span className="mt-1 text-sm text-subtext-light">바로 시작할 수 있지만 앱 삭제 / 기기 변경 시 데이터 복구가 어려울 수 있습니다.</span>
+              <span className="mt-1 text-sm text-subtext-light">앱 삭제 / 기기 변경 시 데이터 복구가 어려울 수 있습니다.</span>
             </button>
 
             <button
