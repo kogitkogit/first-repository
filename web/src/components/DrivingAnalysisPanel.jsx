@@ -1,9 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../api/client";
+import ConfirmDialog from "./ui/ConfirmDialog";
+import { useToast } from "./ui/ToastProvider";
 import { DATE_ERROR_MESSAGE, validatePastOrToday } from "../utils/dateValidation";
 
 function formatDistance(value) {
   return value != null ? `${Number(value).toLocaleString()} km` : "데이터 없음";
+}
+
+function formatDateLabel(value) {
+  if (!value) return "날짜 정보 없음";
+  const [year, month, day] = String(value).slice(0, 10).split("-");
+  if (!year || !month || !day) return value;
+  return `${year}.${month}.${day}.`;
 }
 
 function monthLabel(year, month) {
@@ -101,7 +110,9 @@ export function useDrivingAnalysis(vehicle, apiClient = api) {
     if (comparisonValue == null || distanceValue == null) return "비교 데이터 없음";
     const diff = distanceValue - comparisonValue;
     if (diff === 0) return "직전 구간과 동일";
-    return diff > 0 ? `직전 구간보다 ${diff.toLocaleString()} km 증가` : `직전 구간보다 ${Math.abs(diff).toLocaleString()} km 감소`;
+    return diff > 0
+      ? `직전 구간보다 ${diff.toLocaleString()} km 증가`
+      : `직전 구간보다 ${Math.abs(diff).toLocaleString()} km 감소`;
   }, [comparisonValue, distanceValue]);
 
   return {
@@ -138,7 +149,15 @@ function DrivingAnalysisCard({ title, value, caption }) {
   );
 }
 
-export default function DrivingAnalysisPanel({ vehicle }) {
+export default function DrivingAnalysisPanel({ vehicle, onVehicleRefresh }) {
+  const { showToast } = useToast();
+  const [history, setHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [editingLog, setEditingLog] = useState(null);
+  const [editDate, setEditDate] = useState("");
+  const [editKm, setEditKm] = useState("");
+  const [deleteLog, setDeleteLog] = useState(null);
+
   const analysis = useDrivingAnalysis(vehicle);
   const {
     distanceMode,
@@ -162,11 +181,87 @@ export default function DrivingAnalysisPanel({ vehicle }) {
     error,
   } = analysis;
 
+  const loadHistory = useCallback(async () => {
+    if (!vehicle?.id) {
+      setHistory([]);
+      return;
+    }
+    setHistoryLoading(true);
+    try {
+      const { data } = await api.get("/odometer/history", { params: { vehicleId: vehicle.id } });
+      setHistory(Array.isArray(data?.items) ? data.items : []);
+    } catch (loadError) {
+      console.error("주행거리 기록을 불러오지 못했습니다.", loadError);
+      setHistory([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [vehicle?.id]);
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     }
   }, [vehicle?.id]);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
+
+  const refreshAfterChange = async (currentOdo) => {
+    await loadHistory();
+    fetchDistance();
+    if (onVehicleRefresh) {
+      await onVehicleRefresh(vehicle.id, currentOdo);
+    }
+  };
+
+  const startEdit = (log) => {
+    setEditingLog(log);
+    setEditDate(log.date || "");
+    setEditKm(log.odo_km != null ? String(log.odo_km) : "");
+  };
+
+  const cancelEdit = () => {
+    setEditingLog(null);
+    setEditDate("");
+    setEditKm("");
+  };
+
+  const saveEdit = async () => {
+    if (!editingLog || !editDate || !editKm) return;
+    if (!validatePastOrToday(editDate)) {
+      showToast({ tone: "warning", message: DATE_ERROR_MESSAGE, placement: "center", duration: 1800 });
+      return;
+    }
+    try {
+      const { data } = await api.put(`/odometer/${editingLog.id}`, {
+        date: editDate,
+        odo_km: Number(editKm),
+      });
+      cancelEdit();
+      await refreshAfterChange(data?.current_odo_km);
+      showToast({ tone: "success", message: "저장되었습니다.", placement: "center", duration: 1600 });
+    } catch (saveError) {
+      const message = saveError?.response?.data?.detail || "주행거리 기록 수정에 실패했습니다.";
+      showToast({ tone: "error", message, placement: "center", duration: 1800 });
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteLog) return;
+    try {
+      const { data } = await api.delete(`/odometer/${deleteLog.id}`);
+      if (editingLog?.id === deleteLog.id) {
+        cancelEdit();
+      }
+      setDeleteLog(null);
+      await refreshAfterChange(data?.current_odo_km);
+      showToast({ tone: "success", message: "삭제되었습니다.", placement: "center", duration: 1600 });
+    } catch (deleteError) {
+      showToast({ tone: "error", message: "주행거리 기록 삭제에 실패했습니다.", placement: "center", duration: 1800 });
+    }
+  };
 
   return (
     <div className="space-y-6 px-4 py-6 pb-28">
@@ -264,6 +359,110 @@ export default function DrivingAnalysisPanel({ vehicle }) {
           />
         </div>
       </section>
+
+      <section className="rounded-2xl border border-border-light bg-surface-light p-5 shadow-card">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold text-text-light">주행거리 기록</h3>
+            <p className="text-sm text-subtext-light">입력한 주행거리 이력을 확인하고 잘못된 기록을 수정하거나 삭제하세요.</p>
+          </div>
+          <button
+            type="button"
+            onClick={loadHistory}
+            className="inline-flex h-9 items-center gap-1 rounded-full border border-border-light bg-background-light px-3 text-xs font-semibold text-subtext-light transition hover:text-primary"
+          >
+            <span className="material-symbols-outlined text-base">refresh</span>
+          </button>
+        </div>
+
+        {historyLoading ? (
+          <div className="rounded-xl border border-border-light bg-background-light/70 px-4 py-5 text-center text-sm text-subtext-light">
+            주행거리 기록을 불러오는 중...
+          </div>
+        ) : history.length === 0 ? (
+          <div className="rounded-xl border border-border-light bg-background-light/70 px-4 py-5 text-center text-sm text-subtext-light">
+            아직 저장된 주행거리 기록이 없습니다.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {history.map((log) => (
+              <div key={log.id} className="rounded-2xl border border-border-light bg-background-light p-4 shadow-sm">
+                {editingLog?.id === log.id ? (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="flex flex-col gap-2 text-sm">
+                      <span className="font-medium text-text-light">기록 날짜</span>
+                      <input
+                        type="date"
+                        value={editDate}
+                        onChange={(e) => setEditDate(e.target.value)}
+                        className="h-11 rounded-lg border border-border-light px-3 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-2 text-sm">
+                      <span className="font-medium text-text-light">주행거리 (km)</span>
+                      <input
+                        type="number"
+                        value={editKm}
+                        onChange={(e) => setEditKm(e.target.value)}
+                        className="h-11 rounded-lg border border-border-light px-3 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+                      />
+                    </label>
+                    <div className="flex gap-2 sm:col-span-2">
+                      <button
+                        type="button"
+                        onClick={saveEdit}
+                        className="flex h-10 flex-1 items-center justify-center rounded-lg bg-primary text-sm font-semibold text-white transition hover:bg-primary/90"
+                      >
+                        저장
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelEdit}
+                        className="flex h-10 flex-1 items-center justify-center rounded-lg border border-border-light text-sm font-semibold text-subtext-light transition hover:text-primary"
+                      >
+                        취소
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-base font-bold text-text-light">{Number(log.odo_km).toLocaleString()} km</p>
+                      <p className="text-xs text-subtext-light">{formatDateLabel(log.date)}</p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => startEdit(log)}
+                        className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary transition hover:bg-primary/15"
+                      >
+                        수정
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteLog(log)}
+                        className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-100"
+                      >
+                        삭제
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <ConfirmDialog
+        open={Boolean(deleteLog)}
+        title="주행거리 기록을 삭제할까요?"
+        description="삭제한 주행거리 기록은 복구하기 어렵습니다."
+        confirmLabel="삭제"
+        cancelLabel="취소"
+        onCancel={() => setDeleteLog(null)}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

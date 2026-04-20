@@ -8,10 +8,22 @@ import { APP_NAME, POLICY_DOCUMENTS } from "../content/policyDocuments";
 const AGREEMENT_STORAGE_KEY = "naechasutcheop_terms_agreed_v1";
 
 const AGREEMENT_SUMMARY = [
-  "차량 번호, 주행거리, 정비 이력, 주유·충전 기록, 타이어 관리 기록 등 차량 관리에 필요한 정보를 저장합니다.",
-  "입력한 정보는 차량 관리 기능 제공, 대시보드 집계, 점검 기준 계산, 계정별 데이터 유지에 사용됩니다.",
-  "비회원으로 시작하면 빠르게 사용할 수 있지만 앱 삭제 또는 기기 변경 시 데이터 복구가 어려울 수 있습니다.",
-  "광고가 적용되는 경우 Google AdMob이 광고 제공 및 진단 목적의 정보를 처리할 수 있습니다.",
+  {
+    title: "어떤 정보를 다루나요?",
+    body: "차량 번호, 주행거리, 정비 이력, 주유·충전 기록, 타이어 관리 기록 등 차량 관리에 필요한 정보를 다룹니다.",
+  },
+  {
+    title: "왜 정보를 사용하나요?",
+    body: "입력한 정보를 바탕으로 차량 관리 기능 제공, 대시보드 집계, 비용 계산, 계정별 데이터 보관에 사용합니다.",
+  },
+  {
+    title: "비회원 시작은 어떻게 되나요?",
+    body: "비회원으로 바로 시작할 수 있지만, 앱 삭제나 기기 변경 시 데이터 복구가 어려울 수 있습니다.",
+  },
+  {
+    title: "광고는 어떻게 처리되나요?",
+    body: "광고가 적용되는 경우 Google AdMob이 광고 제공과 진단을 위해 필요한 정보를 처리할 수 있습니다.",
+  },
 ];
 
 function DocLinkButton({ label, onClick }) {
@@ -26,6 +38,7 @@ export default function LoginScreen({ onLoginSuccess }) {
   const { showToast } = useToast();
   const [mode, setMode] = useState("consent");
   const [agreed, setAgreed] = useState(false);
+  const [openSummaryIndex, setOpenSummaryIndex] = useState(null);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -44,7 +57,7 @@ export default function LoginScreen({ onLoginSuccess }) {
 
   const handleConsentContinue = () => {
     if (!agreed) {
-      showToast({ tone: "warning", message: "필수 내용에 동의해주세요.", placement: "center", duration: 1800 });
+      showToast({ tone: "warning", message: "필수 이용 내용에 동의해주세요.", placement: "center", duration: 1800 });
       return;
     }
     localStorage.setItem(AGREEMENT_STORAGE_KEY, "1");
@@ -170,7 +183,7 @@ export default function LoginScreen({ onLoginSuccess }) {
               onClick={() => setMode("register")}
             >
               <span className="text-base font-bold">회원가입해서 시작하기</span>
-              <span className="mt-1 text-sm text-subtext-light">계정으로 로그인해 데이터를 백업, 복구할 수 있습니다.</span>
+              <span className="mt-1 text-sm text-subtext-light">계정으로 로그인해 데이터를 백업하고 복구할 수 있습니다.</span>
             </button>
 
             <button
@@ -180,7 +193,7 @@ export default function LoginScreen({ onLoginSuccess }) {
               disabled={loading}
             >
               <span className="text-base font-bold">비회원으로 시작하기</span>
-              <span className="mt-1 text-sm text-subtext-light">앱 삭제 / 기기 변경 시 데이터 복구가 어려울 수 있습니다.</span>
+              <span className="mt-1 text-sm text-subtext-light">앱 삭제나 기기 변경 시 데이터 복구가 어려울 수 있습니다.</span>
             </button>
 
             <button
@@ -208,18 +221,7 @@ export default function LoginScreen({ onLoginSuccess }) {
         </div>
 
         <section className="rounded-3xl border border-border-light bg-surface-light p-5 shadow-card">
-          <div className="space-y-3">
-            {AGREEMENT_SUMMARY.map((item) => (
-              <div key={item} className="rounded-2xl bg-background-light px-4 py-3 text-sm leading-6 text-subtext-light">
-                {item}
-              </div>
-            ))}
-          </div>
-          <div className="mt-4 rounded-2xl border border-border-light bg-background-light px-4 py-4 text-sm leading-6 text-subtext-light">
-            개인정보처리방침은 <DocLinkButton label="여기" onClick={() => setActiveDoc("privacy")} />를 클릭해 바로 확인할 수 있습니다.
-            백업 및 복구 정책은 <DocLinkButton label="여기" onClick={() => setActiveDoc("backup")} />를 클릭해주세요.
-          </div>
-          <label className="mt-4 flex items-start gap-3 rounded-2xl border border-border-light bg-background-light px-4 py-4">
+          <label className="flex items-start gap-3 rounded-2xl border border-border-light bg-background-light px-4 py-4">
             <input
               type="checkbox"
               checked={agreed}
@@ -230,6 +232,33 @@ export default function LoginScreen({ onLoginSuccess }) {
               차량 관리 서비스 이용과 개인정보 처리, 비회원 시작 시 데이터 복구 제한 내용을 이해했고 이에 동의합니다.
             </span>
           </label>
+
+          <div className="mt-4 space-y-3">
+            {AGREEMENT_SUMMARY.map((item, index) => {
+              const isOpen = openSummaryIndex === index;
+              return (
+                <button
+                  key={item.title}
+                  type="button"
+                  className="w-full rounded-2xl border border-border-light bg-background-light px-4 py-4 text-left transition hover:border-primary/40"
+                  onClick={() => setOpenSummaryIndex((prev) => (prev === index ? null : index))}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-text-light">{item.title}</p>
+                    <span className="material-symbols-outlined text-subtext-light">
+                      {isOpen ? "expand_less" : "expand_more"}
+                    </span>
+                  </div>
+                  {isOpen ? <p className="mt-3 text-sm leading-6 text-subtext-light">{item.body}</p> : null}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-border-light bg-background-light px-4 py-4 text-sm leading-6 text-subtext-light">
+            개인정보처리방침은 <DocLinkButton label="여기" onClick={() => setActiveDoc("privacy")} />를 클릭해 바로 확인할 수 있습니다.
+            백업 및 복구 정책은 <DocLinkButton label="여기" onClick={() => setActiveDoc("backup")} />를 클릭해주세요.
+          </div>
         </section>
 
         <button

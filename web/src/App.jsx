@@ -451,7 +451,7 @@ function AppShell({ selectedVehicle, setSelectedVehicle, vehicles, fetchVehicles
               path="/driving"
               element={
                 <PanelGuard vehicle={selectedVehicle}>
-                  <DrivingAnalysisPanel vehicle={selectedVehicle} hideLocalBack />
+                  <DrivingAnalysisPanel vehicle={selectedVehicle} onVehicleRefresh={refreshVehicle} hideLocalBack />
                 </PanelGuard>
               }
             />

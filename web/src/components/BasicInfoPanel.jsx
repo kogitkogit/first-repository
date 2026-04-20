@@ -1,7 +1,6 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import api from "../api/client";
-import ConfirmDialog from "./ui/ConfirmDialog";
-import { useToast } from "./ui/ToastProvider";
 
 const formatNumber = (value) => {
   if (value === null || value === undefined) return "-";
@@ -116,18 +115,12 @@ function InfoItem({ label, value, badge, icon, onClick }) {
 }
 
 export default function BasicInfoPanel({ vehicle, onRefresh }) {
-  const { showToast } = useToast();
+  const navigate = useNavigate();
   const [legalInfo, setLegalInfo] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [detailFold, setDetailFold] = useState({ insurance: true, inspection: true });
   const [currentOdo, setCurrentOdo] = useState(null);
-  const [odoDeleteOpen, setOdoDeleteOpen] = useState(false);
-  const [odoLogs, setOdoLogs] = useState([]);
-  const [odoLogLoading, setOdoLogLoading] = useState(false);
-  const [odoLogError, setOdoLogError] = useState("");
-  const [odoSelected, setOdoSelected] = useState({});
-  const [odoDeleteConfirmOpen, setOdoDeleteConfirmOpen] = useState(false);
 
   const loadLegalInfo = useCallback(async () => {
     if (!vehicle?.id) {
@@ -182,71 +175,8 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
     ]);
   };
 
-  const loadOdoLogs = async () => {
-    if (!vehicle?.id) return;
-    setOdoLogLoading(true);
-    setOdoLogError("");
-    try {
-      const res = await api.get("/odometer/logs", { params: { vehicleId: vehicle.id } });
-      const rows = Array.isArray(res.data) ? res.data : [];
-      setOdoLogs(rows);
-      setOdoSelected({});
-    } catch (err) {
-      console.error("주행 이력 불러오기 실패:", err);
-      setOdoLogError("주행 이력을 불러오지 못했습니다.");
-    } finally {
-      setOdoLogLoading(false);
-    }
-  };
-
-  const openOdoDeleteModal = async () => {
-    setOdoDeleteOpen(true);
-    await loadOdoLogs();
-  };
-
-  const closeOdoDeleteModal = () => {
-    setOdoDeleteOpen(false);
-    setOdoSelected({});
-  };
-
-  const toggleOdoSelected = (id) => {
-    setOdoSelected((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
-
-  const toggleOdoSelectAll = () => {
-    if (!odoLogs.length) return;
-    const selectedCount = Object.values(odoSelected).filter(Boolean).length;
-    if (selectedCount === odoLogs.length) {
-      setOdoSelected({});
-      return;
-    }
-    const next = {};
-    odoLogs.forEach((row) => {
-      next[row.id] = true;
-    });
-    setOdoSelected(next);
-  };
-
-  const handleOdoDelete = async () => {
-    if (!vehicle?.id) return;
-    const ids = Object.keys(odoSelected).filter((id) => odoSelected[id]).map(Number);
-    if (!ids.length) {
-      showToast({ tone: "warning", message: "삭제할 이력을 선택해주세요." });
-      return;
-    }
-    try {
-      await api.post("/odometer/delete", { vehicleId: vehicle.id, ids });
-      setOdoDeleteConfirmOpen(false);
-      if (onRefresh) {
-        await onRefresh(vehicle.id);
-      }
-      await loadCurrentOdo();
-      await loadOdoLogs();
-      showToast({ tone: "success", message: "선택한 주행 이력을 삭제했습니다." });
-    } catch (err) {
-      console.error("주행 이력 삭제 실패:", err);
-      showToast({ tone: "error", message: "주행 이력 삭제에 실패했습니다." });
-    }
+  const openDrivingAnalysis = () => {
+    navigate("/driving");
   };
 
   const insuranceExpiry = legalInfo?.insurance_expiry ?? vehicle?.insurance_exp;
@@ -428,7 +358,7 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
                 <button
                   key={chip.label}
                   type="button"
-                  onClick={openOdoDeleteModal}
+                  onClick={openDrivingAnalysis}
                   className="flex items-center gap-3 rounded-xl border border-border-light bg-background-light px-3 py-3 text-left transition hover:border-primary"
                 >
                   {content}
@@ -459,7 +389,7 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
               label={item.label}
               value={item.value}
               icon={item.icon}
-              onClick={item.label === "현재 주행거리" ? openOdoDeleteModal : undefined}
+              onClick={item.label === "현재 주행거리" ? openDrivingAnalysis : undefined}
             />
           ))}
         </div>
@@ -548,85 +478,6 @@ export default function BasicInfoPanel({ vehicle, onRefresh }) {
         </section>
       )}
 
-      {odoDeleteOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-border-light bg-background-light p-5 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold text-text-light">주행 이력 삭제</h3>
-              <button
-                type="button"
-                className="text-subtext-light transition hover:text-text-light"
-                onClick={closeOdoDeleteModal}
-              >
-                닫기
-              </button>
-            </div>
-            <p className="mt-2 text-xs text-subtext-light">
-              삭제할 이력을 선택하세요. 삭제된 이력은 복구할 수 없습니다.
-            </p>
-            <div className="mt-3 max-h-[50vh] space-y-2 overflow-auto">
-              {odoLogLoading ? (
-                <div className="rounded-xl border border-border-light bg-background-light/70 px-4 py-4 text-center text-sm text-subtext-light">
-                  주행 이력을 불러오는 중입니다...
-                </div>
-              ) : odoLogError ? (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-                  {odoLogError}
-                </div>
-              ) : odoLogs.length === 0 ? (
-                <div className="rounded-xl border border-border-light bg-background-light/70 px-4 py-4 text-center text-sm text-subtext-light">
-                  저장된 주행 이력이 없습니다.
-                </div>
-              ) : (
-                odoLogs.map((row) => (
-                  <label
-                    key={row.id}
-                    className="flex items-center gap-3 rounded-xl border border-border-light bg-white px-3 py-2"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={Boolean(odoSelected[row.id])}
-                      onChange={() => toggleOdoSelected(row.id)}
-                    />
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-text-light">
-                        {Number(row.odo_km || 0).toLocaleString()} km
-                      </p>
-                      <p className="text-xs text-subtext-light">{row.date || "-"}</p>
-                    </div>
-                  </label>
-                ))
-              )}
-            </div>
-            <div className="mt-4 flex items-center gap-2">
-              <button
-                type="button"
-                className="flex-1 rounded-full border border-border-light px-4 py-2 text-sm font-semibold text-subtext-light transition hover:text-primary"
-                onClick={toggleOdoSelectAll}
-                disabled={odoLogLoading || odoLogs.length === 0}
-              >
-                전체 선택
-              </button>
-              <button
-                type="button"
-                className="flex-1 rounded-full bg-red-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-600"
-                onClick={() => setOdoDeleteConfirmOpen(true)}
-                disabled={odoLogLoading || odoLogs.length === 0}
-              >
-                선택 삭제
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      <ConfirmDialog
-        open={odoDeleteConfirmOpen}
-        title="주행 이력 삭제"
-        description="선택한 주행 이력을 삭제합니다. 삭제 후 복구할 수 없습니다."
-        confirmLabel="삭제"
-        onConfirm={handleOdoDelete}
-        onCancel={() => setOdoDeleteConfirmOpen(false)}
-      />
     </div>
   );
 }

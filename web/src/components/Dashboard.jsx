@@ -39,6 +39,7 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
   const [odoEditing, setOdoEditing] = useState(false);
   const [odoDate, setOdoDate] = useState("");
   const [odoKm, setOdoKm] = useState("");
+  const [odoSaving, setOdoSaving] = useState(false);
   const [dueSummary, setDueSummary] = useState({ loading: true, items: [], error: null });
   const [dueModalOpen, setDueModalOpen] = useState(false);
   const [adStatus, setAdStatus] = useState(isAdMobSupported() ? "loading" : "web");
@@ -192,28 +193,39 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
     navigate(location.pathname, { replace: true, state: {} });
   }, [location.pathname, location.state, navigate, vehicle?.odo_km]);
 
-  const handleOdoSave = () => {
-    if (!vehicle || !odoDate || !odoKm) return;
+  const resetOdoForm = () => {
+    setOdoEditing(false);
+    setOdoDate("");
+    setOdoKm("");
+  };
+
+  const refreshAfterOdoChange = (nextOdo) => {
+    setCurrentOdo(nextOdo ?? null);
+    fetchDistance();
+    if (onVehicleRefresh) {
+      onVehicleRefresh(vehicle.id);
+    }
+  };
+
+  const handleOdoSave = async () => {
+    if (!vehicle || !odoDate || !odoKm || odoSaving) return;
     if (!validatePastOrToday(odoDate)) {
       showToast({ tone: "warning", message: DATE_ERROR_MESSAGE, placement: "center", duration: 1800 });
       return;
     }
-    api
-      .post("/odometer/update", { vehicleId: vehicle.id, date: odoDate, odo_km: Number(odoKm) })
-      .then(() => {
-        setCurrentOdo(Number(odoKm));
-        setOdoEditing(false);
-        setOdoDate("");
-        setOdoKm("");
-        fetchDistance();
-        loadDueSummary();
-        if (onVehicleRefresh) {
-          onVehicleRefresh(vehicle.id);
-        }
-      })
-      .catch(() => {
-        showToast({ tone: "error", message: "주행거리 업데이트 중 오류가 발생했습니다. 다시 시도해주세요." });
-      });
+    const payload = { date: odoDate, odo_km: Number(odoKm) };
+    setOdoSaving(true);
+    try {
+      const { data } = await api.post("/odometer/update", { vehicleId: vehicle.id, ...payload });
+      refreshAfterOdoChange(data?.current_odo_km ?? Number(odoKm));
+      resetOdoForm();
+      showToast({ tone: "success", message: "저장되었습니다.", placement: "center", duration: 1600 });
+    } catch (error) {
+      const message = error?.response?.data?.detail || "주행거리 저장 중 오류가 발생했습니다.";
+      showToast({ tone: "error", message, placement: "center", duration: 1800 });
+    } finally {
+      setOdoSaving(false);
+    }
   };
 
   const formattedExpense = `${Number(expenseMonthly || 0).toLocaleString()} 원`;
@@ -325,14 +337,6 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
                   <div className="inline-flex items-center gap-3 rounded-full border border-border-light bg-background-light/80 px-3 py-1 text-xs text-subtext-light">
                     <span className="font-semibold text-text-light">{currentMileageLabel}</span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setOdoEditing((prev) => !prev)}
-                    className="flex items-center gap-2 rounded-full bg-primary px-3 py-1 text-xs font-semibold text-white transition hover:bg-primary/90"
-                  >
-                    <span className="material-symbols-outlined text-base">{odoEditing ? "close" : "speed"}</span>
-                    {odoEditing ? "입력 취소" : "주행거리 업데이트"}
-                  </button>
                 </div>
               </div>
               <div className="inline-flex max-w-full flex-nowrap items-center gap-2 whitespace-nowrap rounded-full bg-primary/5 px-3 py-1 text-[11px] font-semibold text-primary sm:text-xs">
@@ -350,7 +354,24 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              
+              <button
+                type="button"
+                onClick={() => {
+                  if (odoEditing) {
+                    resetOdoForm();
+                    return;
+                  }
+                  setEditingOdoLogId(null);
+                  setOdoEditing(true);
+                  setOdoDate(new Date().toISOString().slice(0, 10));
+                  setOdoKm(primaryOdo != null ? String(primaryOdo) : "");
+                }}
+                className="flex h-9 shrink-0 items-center gap-2 rounded-full bg-primary px-4 text-xs font-semibold text-white transition hover:bg-primary/90"
+              >
+                <span className="material-symbols-outlined text-base">{odoEditing ? "close" : "speed"}</span>
+                {odoEditing ? "입력 취소" : "주행거리 업데이트"}
+              </button>
+
               {dueLoading ? (
                 <div className="flex h-9 w-full flex-nowrap items-center justify-center gap-2 overflow-hidden rounded-full border border-border-light bg-background-light px-4 text-[11px] font-semibold text-subtext-light sm:w-auto sm:px-8 sm:text-xs">
                   <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-subtext-light/25 border-t-subtext-light" />
@@ -401,17 +422,15 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
                 <button
                   type="button"
                   onClick={handleOdoSave}
+                  disabled={odoSaving}
                   className="flex h-11 flex-1 items-center justify-center rounded-lg bg-primary text-sm font-semibold text-white transition hover:bg-primary/90"
                 >
-                  주행거리 저장
+                  {odoSaving ? "저장 중..." : "주행거리 저장"}
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setOdoEditing(false);
-                    setOdoDate("");
-                    setOdoKm("");
-                  }}
+                  onClick={resetOdoForm}
+                  disabled={odoSaving}
                   className="flex h-11 flex-1 items-center justify-center rounded-lg border border-border-light text-sm font-semibold text-subtext-light transition hover:text-primary"
                 >
                   취소
@@ -443,24 +462,6 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
             </button>
           ))}
         </section>
-
-      <section className="rounded-xl border border-border-light bg-white px-4 py-3 shadow-sm">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold tracking-wide text-slate-500">광고</span>
-          <span className="text-[11px] font-semibold text-subtext-light">Google AdMob</span>
-        </div>
-        <div className="flex min-h-[56px] items-center justify-center text-center text-xs font-semibold text-subtext-light">
-          {adStatus === "shown"
-            ? "광고가 화면 하단에 표시되고 있습니다."
-            : adStatus === "loading"
-            ? "광고를 준비하는 중입니다."
-            : adStatus === "blocked"
-            ? "광고 개인정보 선택에 따라 현재 광고가 표시되지 않을 수 있습니다."
-            : adStatus === "error"
-            ? "광고를 불러오지 못했습니다."
-            : "모바일 앱에서 광고가 표시됩니다."}
-        </div>
-      </section>
 
       <section className="rounded-2xl border border-primary bg-gradient-to-b from-primary/10 via-primary/5 to-surface-light p-5 shadow-card">
         <div className="mb-4 flex items-center justify-between">

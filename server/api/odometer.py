@@ -1,6 +1,7 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from core.auth import get_current_user
@@ -13,11 +14,49 @@ from schemas.OdometerUpdate import OdometerUpdate
 router = APIRouter()
 
 
+class OdometerLogUpdate(BaseModel):
+    date: date
+    odo_km: int
+
+
+def serialize_log(log: VehicleOdometerLog) -> dict:
+    return {
+        "id": log.id,
+        "vehicle_id": log.vehicle_id,
+        "date": log.date.isoformat() if log.date else None,
+        "odo_km": log.odo_km,
+        "created_at": log.created_at.isoformat() if log.created_at else None,
+    }
+
+
 def ensure_vehicle(vehicle_id: int, current_user: User, db: Session) -> Vehicle:
     vehicle = db.query(Vehicle).filter(Vehicle.id == vehicle_id, Vehicle.user_id == current_user.id).first()
     if not vehicle:
         raise HTTPException(status_code=404, detail="Vehicle not found")
     return vehicle
+
+
+def ensure_log(log_id: int, current_user: User, db: Session) -> VehicleOdometerLog:
+    log = (
+        db.query(VehicleOdometerLog)
+        .join(Vehicle, Vehicle.id == VehicleOdometerLog.vehicle_id)
+        .filter(VehicleOdometerLog.id == log_id, Vehicle.user_id == current_user.id)
+        .first()
+    )
+    if not log:
+        raise HTTPException(status_code=404, detail="Odometer log not found")
+    return log
+
+
+def refresh_vehicle_current_odo(vehicle: Vehicle, db: Session) -> int | None:
+    latest_log = (
+        db.query(VehicleOdometerLog)
+        .filter(VehicleOdometerLog.vehicle_id == vehicle.id)
+        .order_by(VehicleOdometerLog.date.desc(), VehicleOdometerLog.id.desc())
+        .first()
+    )
+    vehicle.odo_km = latest_log.odo_km if latest_log else None
+    return vehicle.odo_km
 
 
 @router.post("/update")
@@ -29,13 +68,52 @@ def update_odometer(data: OdometerUpdate, db: Session = Depends(get_db), current
     db.add(log)
     vehicle.odo_km = data.odo_km
     db.commit()
-    return {"success": True}
+    db.refresh(log)
+    return {"success": True, "log": serialize_log(log), "current_odo_km": vehicle.odo_km}
 
 
 @router.get("/current")
 def get_current(vehicleId: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     vehicle = ensure_vehicle(vehicleId, current_user, db)
     return {"odo_km": vehicle.odo_km}
+
+
+@router.get("/history")
+def get_history(vehicleId: int, limit: int = 50, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    ensure_vehicle(vehicleId, current_user, db)
+    logs = (
+        db.query(VehicleOdometerLog)
+        .filter(VehicleOdometerLog.vehicle_id == vehicleId)
+        .order_by(VehicleOdometerLog.date.desc(), VehicleOdometerLog.id.desc())
+        .limit(min(max(limit, 1), 200))
+        .all()
+    )
+    return {"items": [serialize_log(log) for log in logs]}
+
+
+@router.put("/{log_id}")
+def update_log(log_id: int, data: OdometerLogUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    log = ensure_log(log_id, current_user, db)
+    if data.date > date.today():
+        raise HTTPException(status_code=400, detail="올바른 날짜를 선택해주세요.")
+    log.date = data.date
+    log.odo_km = data.odo_km
+    vehicle = ensure_vehicle(log.vehicle_id, current_user, db)
+    current_odo = refresh_vehicle_current_odo(vehicle, db)
+    db.commit()
+    db.refresh(log)
+    return {"success": True, "log": serialize_log(log), "current_odo_km": current_odo}
+
+
+@router.delete("/{log_id}")
+def delete_log(log_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    log = ensure_log(log_id, current_user, db)
+    vehicle = ensure_vehicle(log.vehicle_id, current_user, db)
+    db.delete(log)
+    db.flush()
+    current_odo = refresh_vehicle_current_odo(vehicle, db)
+    db.commit()
+    return {"success": True, "current_odo_km": current_odo}
 
 
 @router.get("/monthly")
