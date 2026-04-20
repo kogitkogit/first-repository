@@ -1,19 +1,30 @@
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+
+from core.auth import get_current_user
 from db.session import get_db
-from models.Vehicle import Vehicle
 from models.CarMaker import CarMaker
-from models.CarModel import CarModel
 from models.CarMakerAbroad import CarMakerAbroad
+from models.CarModel import CarModel
 from models.CarModelAbroad import CarModelAbroad
-from schemas.vehicle import VehicleCreate
+from models.ChargingRecord import ChargingRecord
+from models.ConsumableItem import Consumable, ConsumableItem
+from models.Expense import Expense
+from models.FuelRecord import FuelRecord
+from models.MaintenanceRecord import MaintenanceRecord
+from models.Notification import Notification
+from models.Tire import TireMeasurement, TireServiceRecord, VehicleTire
 from models.User import User
-from core.auth import get_current_user  # JWT 토큰에서 사용자 추출
+from models.Vehicle import Vehicle
+from models.VehicleOdometerLog import VehicleOdometerLog
+from models.legalinfo import LegalInfo, LegalNotification
+from schemas.vehicle import VehicleCreate
 
 router = APIRouter(tags=["vehicles"])
 
-# 차량 등록
+
 @router.post("/add")
 def add_vehicle(
     vehicle: VehicleCreate,
@@ -36,10 +47,11 @@ def add_vehicle(
     db.refresh(new_vehicle)
     return {"success": True, "vehicle": new_vehicle.id, "id": new_vehicle.id}
 
-# 차량 조회
-@router.get("/list") 
-def list_vehicles(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)): 
+
+@router.get("/list")
+def list_vehicles(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return db.query(Vehicle).filter(Vehicle.user_id == current_user.id).all()
+
 
 @router.delete("/{vehicle_id}")
 def delete_vehicle(
@@ -51,18 +63,31 @@ def delete_vehicle(
     if not vehicle:
         raise HTTPException(status_code=404, detail="차량을 찾을 수 없습니다.")
 
+    db.query(Notification).filter(Notification.vehicle_id == vehicle_id).delete(synchronize_session=False)
+    db.query(MaintenanceRecord).filter(MaintenanceRecord.vehicle_id == vehicle_id).delete(synchronize_session=False)
+    db.query(Consumable).filter(Consumable.vehicle_id == vehicle_id).delete(synchronize_session=False)
+    db.query(ConsumableItem).filter(ConsumableItem.vehicle_id == vehicle_id).delete(synchronize_session=False)
+    db.query(TireMeasurement).filter(TireMeasurement.vehicle_id == vehicle_id).delete(synchronize_session=False)
+    db.query(TireServiceRecord).filter(TireServiceRecord.vehicle_id == vehicle_id).delete(synchronize_session=False)
+    db.query(VehicleTire).filter(VehicleTire.vehicle_id == vehicle_id).delete(synchronize_session=False)
+    db.query(LegalNotification).filter(LegalNotification.vehicle_id == vehicle_id).delete(synchronize_session=False)
+    db.query(LegalInfo).filter(LegalInfo.vehicle_id == vehicle_id).delete(synchronize_session=False)
+    db.query(FuelRecord).filter(FuelRecord.vehicle_id == vehicle_id).delete(synchronize_session=False)
+    db.query(ChargingRecord).filter(ChargingRecord.vehicle_id == vehicle_id).delete(synchronize_session=False)
+    db.query(Expense).filter(Expense.vehicle_id == vehicle_id).delete(synchronize_session=False)
+    db.query(VehicleOdometerLog).filter(VehicleOdometerLog.vehicle_id == vehicle_id).delete(synchronize_session=False)
+
     db.delete(vehicle)
     db.commit()
-    return {"success": True}
+    return {"success": True, "ok": True}
 
-# 국산 제조사
 
 @router.get("/makers/domestic", response_model=List[str])
 def get_domestic_makers(db: Session = Depends(get_db)):
     makers = db.query(CarMaker).all()
-    return [m.name for m in makers]
+    return [maker.name for maker in makers]
 
-# 국산 모델
+
 @router.get("/models/domestic")
 def list_domestic_models(maker: str, db: Session = Depends(get_db)):
     maker_obj = db.query(CarMaker).filter_by(name=maker).first()
@@ -71,21 +96,20 @@ def list_domestic_models(maker: str, db: Session = Depends(get_db)):
     models = db.query(CarModel).filter_by(maker_id=maker_obj.id).all()
     return [
         {
-            "id": m.id,
-            "name": m.name,
-            "displacement_cc": m.displacement_cc   # ✅ 배기량 포함
+            "id": model.id,
+            "name": model.name,
+            "displacement_cc": model.displacement_cc,
         }
-        for m in models
+        for model in models
     ]
 
-# 수입 제조사
 
 @router.get("/makers/abroad", response_model=List[str])
 def get_abroad_makers(db: Session = Depends(get_db)):
     makers = db.query(CarMakerAbroad).all()
-    return [m.name for m in makers]
+    return [maker.name for maker in makers]
 
-# 수입 모델
+
 @router.get("/models/abroad")
 def list_abroad_models(maker: str, db: Session = Depends(get_db)):
     maker_obj = db.query(CarMakerAbroad).filter_by(name=maker).first()
@@ -94,10 +118,9 @@ def list_abroad_models(maker: str, db: Session = Depends(get_db)):
     models = db.query(CarModelAbroad).filter_by(maker_id=maker_obj.id).all()
     return [
         {
-            "id": m.id,
-            "name": m.name,
-            "displacement_cc": m.displacement_cc   # ✅ 배기량 포함
+            "id": model.id,
+            "name": model.name,
+            "displacement_cc": model.displacement_cc,
         }
-        for m in models
+        for model in models
     ]
-
