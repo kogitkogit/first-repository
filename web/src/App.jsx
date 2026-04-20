@@ -382,6 +382,15 @@ function AppShell({ selectedVehicle, setSelectedVehicle, vehicles, fetchVehicles
                   .then(() => navigate("/"))
                   .catch(() => {});
               }}
+              onDeleted={(deletedVehicleId) => {
+                fetchVehicles()
+                  .then((list) => {
+                    if (!list.find((item) => item.id === deletedVehicleId)) {
+                      navigate("/");
+                    }
+                  })
+                  .catch(() => {});
+              }}
               userId={userId}
             />
           </div>

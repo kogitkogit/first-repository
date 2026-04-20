@@ -12,7 +12,7 @@ const FUEL_TYPE_OPTIONS = [
 
 const fuelTypeLabel = (value) => FUEL_TYPE_OPTIONS.find((option) => option.value === value)?.label || value || null;
 
-export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, userId }) {
+export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, onDeleted, userId }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     plate_no: "",
@@ -122,9 +122,10 @@ export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, use
     if (!pendingDelete) return;
     setError("");
     try {
+      const deletedVehicleId = pendingDelete.id;
       await api.delete(`/vehicles/${pendingDelete.id}`);
       setPendingDelete(null);
-      onCreated?.(null);
+      onDeleted?.(deletedVehicleId);
     } catch (err) {
       console.error("차량 삭제 오류:", err);
       setError("차량 삭제 중 문제가 발생했습니다. 다시 시도해주세요.");
