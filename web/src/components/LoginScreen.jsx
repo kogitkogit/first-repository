@@ -48,6 +48,9 @@ export default function LoginScreen({ onLoginSuccess }) {
       return;
     }
     localStorage.setItem(AGREEMENT_STORAGE_KEY, "1");
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("naechasutcheop:terms-agreed"));
+    }
     setMode("choice");
   };
 

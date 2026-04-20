@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import api from "../api/client";
 import ConfirmDialog from "./ui/ConfirmDialog";
 import DocumentModal from "./ui/DocumentModal";
 import { useToast } from "./ui/ToastProvider";
 import { APP_NAME, POLICY_DOCUMENTS } from "../content/policyDocuments";
+import { initializeAdMob, isAdMobSupported, openAdPrivacyOptions } from "../services/admob";
 
 function SectionCard({ title, description, children }) {
   return (
@@ -42,6 +43,7 @@ export default function SettingsPanel({ userId, vehicle, username, accountType, 
   const [activeDoc, setActiveDoc] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [adPrivacyAvailable, setAdPrivacyAvailable] = useState(false);
 
   if (!userId || !vehicle) {
     return <div className="p-4 text-sm text-subtext-light">차량을 먼저 선택한 뒤 다시 시도해주세요.</div>;
@@ -49,6 +51,28 @@ export default function SettingsPanel({ userId, vehicle, username, accountType, 
 
   const isGuest = accountType === "guest";
   const activeDocument = activeDoc ? POLICY_DOCUMENTS[activeDoc] : null;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const prepareAdPrivacy = async () => {
+      if (!isAdMobSupported()) return;
+      try {
+        await initializeAdMob();
+        if (!cancelled) {
+          setAdPrivacyAvailable(true);
+        }
+      } catch (error) {
+        console.error("광고 개인정보 설정 준비 실패:", error);
+      }
+    };
+
+    prepareAdPrivacy();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleDeleteAccount = async () => {
     try {
@@ -62,6 +86,16 @@ export default function SettingsPanel({ userId, vehicle, username, accountType, 
       showToast({ tone: "error", message: "회원 탈퇴에 실패했습니다. 다시 시도해주세요." });
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleOpenAdPrivacy = async () => {
+    try {
+      await openAdPrivacyOptions();
+      showToast({ tone: "success", message: "광고 개인정보 설정을 열었습니다.", placement: "center", duration: 1800 });
+    } catch (error) {
+      console.error("광고 개인정보 설정 열기 실패:", error);
+      showToast({ tone: "warning", message: "광고 개인정보 설정을 열 수 없습니다." });
     }
   };
 
@@ -130,6 +164,12 @@ export default function SettingsPanel({ userId, vehicle, username, accountType, 
           회원 탈퇴
         </button>
       </SectionCard>
+
+      {adPrivacyAvailable ? (
+        <SectionCard title="광고 개인정보 설정" description="광고 동의 상태와 개인정보 선택을 다시 열 수 있습니다.">
+          <DocActionButton onClick={handleOpenAdPrivacy}>광고 개인정보 설정은 여기에서 확인해주세요</DocActionButton>
+        </SectionCard>
+      ) : null}
 
       <DocumentModal
         open={Boolean(activeDocument)}

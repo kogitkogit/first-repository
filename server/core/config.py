@@ -15,7 +15,9 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = ",".join(
         [
             "http://localhost",
+            "https://localhost",
             "http://127.0.0.1",
+            "https://127.0.0.1",
             "http://localhost:5173",
             "http://127.0.0.1:5173",
             "capacitor://localhost",

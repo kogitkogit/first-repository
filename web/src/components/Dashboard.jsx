@@ -6,6 +6,7 @@ import { CONSUMABLE_CATEGORY_META } from "../constants/consumables";
 import { fetchCostSnapshot } from "../utils/costs";
 import { useToast } from "./ui/ToastProvider";
 import { DATE_ERROR_MESSAGE, validatePastOrToday } from "../utils/dateValidation";
+import { hideDashboardBanner, isAdMobSupported, showDashboardBanner } from "../services/admob";
 
 const menu = [
   { key: "basic", label: "기본 정보", icon: "badge", path: "/basic" },
@@ -40,6 +41,7 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
   const [odoKm, setOdoKm] = useState("");
   const [dueSummary, setDueSummary] = useState({ loading: true, items: [], error: null });
   const [dueModalOpen, setDueModalOpen] = useState(false);
+  const [adStatus, setAdStatus] = useState(isAdMobSupported() ? "loading" : "web");
 
   const analysis = useDrivingAnalysis(vehicle);
   const {
@@ -151,6 +153,36 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
     if (!vehicle || !odoReady) return;
     loadDueSummary();
   }, [vehicle, odoReady, loadDueSummary]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const syncBanner = async () => {
+      if (!isAdMobSupported()) {
+        setAdStatus("web");
+        return;
+      }
+      try {
+        setAdStatus("loading");
+        const shown = await showDashboardBanner();
+        if (!cancelled) {
+          setAdStatus(shown ? "shown" : "blocked");
+        }
+      } catch (error) {
+        console.error("대시보드 배너 표시 실패", error);
+        if (!cancelled) {
+          setAdStatus("error");
+        }
+      }
+    };
+
+    syncBanner();
+
+    return () => {
+      cancelled = true;
+      hideDashboardBanner().catch(() => {});
+    };
+  }, []);
 
   useEffect(() => {
     if (!location.state?.openOdo) return;
@@ -389,9 +421,6 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
           )}
         </div>
       </section>
-      <section className="rounded-xl border border-border-light bg-white px-4 py-3 text-center text-xs font-semibold text-subtext-light shadow-sm">
-        광고 영역
-      </section>
       <section className="grid grid-cols-3 gap-3">
           {metrics.map((metric) => (
             <button
@@ -414,6 +443,24 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
             </button>
           ))}
         </section>
+
+      <section className="rounded-xl border border-border-light bg-white px-4 py-3 shadow-sm">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold tracking-wide text-slate-500">광고</span>
+          <span className="text-[11px] font-semibold text-subtext-light">Google AdMob</span>
+        </div>
+        <div className="flex min-h-[56px] items-center justify-center text-center text-xs font-semibold text-subtext-light">
+          {adStatus === "shown"
+            ? "광고가 화면 하단에 표시되고 있습니다."
+            : adStatus === "loading"
+            ? "광고를 준비하는 중입니다."
+            : adStatus === "blocked"
+            ? "광고 개인정보 선택에 따라 현재 광고가 표시되지 않을 수 있습니다."
+            : adStatus === "error"
+            ? "광고를 불러오지 못했습니다."
+            : "모바일 앱에서 광고가 표시됩니다."}
+        </div>
+      </section>
 
       <section className="rounded-2xl border border-primary bg-gradient-to-b from-primary/10 via-primary/5 to-surface-light p-5 shadow-card">
         <div className="mb-4 flex items-center justify-between">
