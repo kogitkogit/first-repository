@@ -151,6 +151,7 @@ function ItemCard({ item, state, onOpenDetail, onDelete, currentMileage, alertsE
         message,
         used,
         cycleValue,
+        unit: "km",
         percent,
         showProgress: true,
         showAlert: alertsEnabled && dueMessage && tone === "danger",
@@ -168,10 +169,18 @@ function ItemCard({ item, state, onOpenDetail, onDelete, currentMileage, alertsE
           return { tone: "muted", message: "교체 정보를 입력해주세요.", showProgress: false };
         }
         const isDue = remain <= 0;
+        const used = Math.max(0, diffMonths);
+        const cycleValue = Number(state.cycleMonths || 0);
+        const warnThreshold = Math.max(1, cycleValue * 0.2);
+        const tone = isDue ? "danger" : remain <= warnThreshold ? "warn" : "ok";
         return {
-          tone: isDue ? "danger" : "ok",
+          tone,
           message: isDue ? "교체 시기 도래!" : `남은 기간: ${Math.max(remain, 0)} 개월`,
-          showProgress: false,
+          used,
+          cycleValue,
+          unit: "개월",
+          percent: cycleValue > 0 ? Math.min(100, Math.max(0, (used / cycleValue) * 100)) : 0,
+          showProgress: true,
           showAlert: alertsEnabled && dueMessage && isDue,
         };
       }
@@ -231,7 +240,7 @@ function ItemCard({ item, state, onOpenDetail, onDelete, currentMileage, alertsE
                 />
               </div>
               <p className="text-right text-[11px] text-subtext-light">
-                {formatNumber(statusData.used)} / {formatNumber(statusData.cycleValue)} km
+                {formatNumber(statusData.used)} / {formatNumber(statusData.cycleValue)} {statusData.unit || "km"}
               </p>
             </div>
           ) : null}

@@ -8,6 +8,10 @@ class LoginIn(BaseModel):
     username: str
     password: str
 
+
+class GuestResumeIn(BaseModel):
+    resume_token: str
+
 class ResetPasswordIn(BaseModel):
     username: str
     current_password: str
@@ -24,3 +28,4 @@ class TokenOut(BaseModel):
     user_id: int
     username: str
     account_type: str
+    guest_resume_token: str | None = None

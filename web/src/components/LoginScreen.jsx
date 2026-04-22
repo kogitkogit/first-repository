@@ -109,10 +109,33 @@ export default function LoginScreen({ onLoginSuccess }) {
     if (!canGuestStart) return;
     try {
       setLoading(true);
-      const res = await api.post("/auth/guest");
-      const { access_token, user_id, username: accountName, account_type } = res.data;
-      showToast({ tone: "success", message: "비회원 계정이 생성되었습니다.", placement: "center", duration: 1600 });
-      onLoginSuccess(access_token, accountName, user_id, account_type || "guest");
+      let res = null;
+      const storedResumeToken = typeof window !== "undefined" ? localStorage.getItem("guest_resume_token") : null;
+
+      if (storedResumeToken) {
+        try {
+          res = await api.post("/auth/guest/resume", { resume_token: storedResumeToken });
+        } catch (resumeError) {
+          console.warn("기존 비회원 세션 복구 실패:", resumeError);
+          const status = resumeError?.response?.status;
+          if (status === 401 || status === 404) {
+            if (typeof window !== "undefined") {
+              localStorage.removeItem("guest_resume_token");
+            }
+          } else {
+            throw resumeError;
+          }
+        }
+      }
+
+      if (!res) {
+        res = await api.post("/auth/guest");
+      }
+
+      const { access_token, user_id, username: accountName, account_type, guest_resume_token } = res.data;
+      const resumed = Boolean(storedResumeToken && res?.config?.url?.includes("/guest/resume"));
+      showToast({ tone: "success", message: resumed ? "이전 비회원 계정으로 이어서 시작합니다." : "비회원 계정이 생성되었습니다.", placement: "center", duration: 1600 });
+      onLoginSuccess(access_token, accountName, user_id, account_type || "guest", guest_resume_token);
     } catch (error) {
       console.error("비회원 시작 오류:", error);
       const message = error?.code === "ECONNABORTED" ? "서버를 준비하는 중입니다. 잠시 후 다시 시도해주세요." : "비회원 시작에 실패했습니다. 다시 시도해주세요.";

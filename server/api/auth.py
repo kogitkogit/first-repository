@@ -1,9 +1,12 @@
 import secrets
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
+from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
 from core.auth import get_current_user
+from core.config import settings
 from core.security import create_token, hash_password, verify_password
 from db.session import get_db
 from models.ChargingRecord import ChargingRecord
@@ -17,7 +20,7 @@ from models.User import User
 from models.Vehicle import Vehicle
 from models.VehicleOdometerLog import VehicleOdometerLog
 from models.legalinfo import LegalInfo, LegalNotification
-from schemas.auth import LoginIn, RegisterIn, TokenOut
+from schemas.auth import GuestResumeIn, LoginIn, RegisterIn, TokenOut
 
 router = APIRouter(tags=["auth"])
 
@@ -26,13 +29,25 @@ def account_type_for(user: User) -> str:
     return "guest" if user.username.startswith("guest_") else "registered"
 
 
-def build_token_response(user: User) -> TokenOut:
+def build_guest_resume_token(user: User) -> str:
+    payload = {
+        "sub": user.username,
+        "typ": "guest_resume",
+        "iat": datetime.utcnow(),
+        "exp": datetime.utcnow() + timedelta(days=365 * 5),
+    }
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALG)
+
+
+def build_token_response(user: User, include_guest_resume: bool = False) -> TokenOut:
     token = create_token(str(user.id))
+    account_type = account_type_for(user)
     return TokenOut(
         access_token=token,
         user_id=user.id,
         username=user.username,
-        account_type=account_type_for(user),
+        account_type=account_type,
+        guest_resume_token=build_guest_resume_token(user) if include_guest_resume and account_type == "guest" else None,
     )
 
 
@@ -71,7 +86,28 @@ def guest_login(db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
-    return build_token_response(user)
+    return build_token_response(user, include_guest_resume=True)
+
+
+@router.post("/guest/resume", response_model=TokenOut)
+def resume_guest(body: GuestResumeIn, db: Session = Depends(get_db)):
+    try:
+        payload = jwt.decode(body.resume_token, settings.JWT_SECRET, algorithms=[settings.JWT_ALG])
+    except JWTError:
+        raise HTTPException(status_code=401, detail="비회원 세션을 다시 확인할 수 없습니다.")
+
+    if payload.get("typ") != "guest_resume":
+        raise HTTPException(status_code=401, detail="비회원 세션을 다시 확인할 수 없습니다.")
+
+    username = payload.get("sub")
+    if not username or not str(username).startswith("guest_"):
+        raise HTTPException(status_code=401, detail="비회원 세션을 다시 확인할 수 없습니다.")
+
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="비회원 계정을 찾을 수 없습니다.")
+
+    return build_token_response(user, include_guest_resume=True)
 
 
 @router.delete("/me")

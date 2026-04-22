@@ -180,7 +180,7 @@ export default function App() {
     [fetchVehicles, selectedVehicle?.id, loadLegalSummary],
   );
 
-  const handleLoginSuccess = (t, u, id, nextAccountType = "registered") => {
+  const handleLoginSuccess = (t, u, id, nextAccountType = "registered", guestResumeToken = null) => {
     setToken(t);
     setUsername(u);
     setAccountType(nextAccountType);
@@ -190,6 +190,9 @@ export default function App() {
       localStorage.setItem("user_id", String(id));
       localStorage.setItem("username", u ?? "");
       localStorage.setItem("account_type", nextAccountType);
+      if (nextAccountType === "guest" && guestResumeToken) {
+        localStorage.setItem("guest_resume_token", guestResumeToken);
+      }
     }
     navigate("/");
     fetchVehicles().catch(() => {});
