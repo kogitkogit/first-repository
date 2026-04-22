@@ -91,29 +91,34 @@ def get_history(vehicleId: int, limit: int = 50, db: Session = Depends(get_db), 
     return {"items": [serialize_log(log) for log in logs]}
 
 
-@router.put("/{log_id}")
-def update_log(log_id: int, data: OdometerLogUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    log = ensure_log(log_id, current_user, db)
-    if data.date > date.today():
-        raise HTTPException(status_code=400, detail="올바른 날짜를 선택해주세요.")
-    log.date = data.date
-    log.odo_km = data.odo_km
-    vehicle = ensure_vehicle(log.vehicle_id, current_user, db)
-    current_odo = refresh_vehicle_current_odo(vehicle, db)
-    db.commit()
-    db.refresh(log)
-    return {"success": True, "log": serialize_log(log), "current_odo_km": current_odo}
+@router.get("/overall")
+def get_overall(vehicleId: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    ensure_vehicle(vehicleId, current_user, db)
+    first_log = (
+        db.query(VehicleOdometerLog)
+        .filter(VehicleOdometerLog.vehicle_id == vehicleId)
+        .order_by(VehicleOdometerLog.date.asc(), VehicleOdometerLog.id.asc())
+        .first()
+    )
+    last_log = (
+        db.query(VehicleOdometerLog)
+        .filter(VehicleOdometerLog.vehicle_id == vehicleId)
+        .order_by(VehicleOdometerLog.date.desc(), VehicleOdometerLog.id.desc())
+        .first()
+    )
+    count = db.query(VehicleOdometerLog).filter(VehicleOdometerLog.vehicle_id == vehicleId).count()
 
+    if not first_log or not last_log:
+        return {"distance": 0, "start_km": None, "end_km": None, "start_date": None, "end_date": None, "count": 0}
 
-@router.delete("/{log_id}")
-def delete_log(log_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    log = ensure_log(log_id, current_user, db)
-    vehicle = ensure_vehicle(log.vehicle_id, current_user, db)
-    db.delete(log)
-    db.flush()
-    current_odo = refresh_vehicle_current_odo(vehicle, db)
-    db.commit()
-    return {"success": True, "current_odo_km": current_odo}
+    return {
+        "distance": max(0, last_log.odo_km - first_log.odo_km),
+        "start_km": first_log.odo_km,
+        "end_km": last_log.odo_km,
+        "start_date": first_log.date.isoformat() if first_log.date else None,
+        "end_date": last_log.date.isoformat() if last_log.date else None,
+        "count": count,
+    }
 
 
 @router.get("/monthly")
@@ -176,3 +181,28 @@ def get_range(vehicleId: int, fromDate: date, toDate: date, db: Session = Depend
     start_km = start_log.odo_km if start_log else logs[0].odo_km if logs else end_log.odo_km
     end_km = end_log.odo_km
     return {"distance": max(0, end_km - start_km), "start_km": start_km, "end_km": end_km, "count": len(logs)}
+
+
+@router.put("/{log_id}")
+def update_log(log_id: int, data: OdometerLogUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    log = ensure_log(log_id, current_user, db)
+    if data.date > date.today():
+        raise HTTPException(status_code=400, detail="올바른 날짜를 선택해주세요.")
+    log.date = data.date
+    log.odo_km = data.odo_km
+    vehicle = ensure_vehicle(log.vehicle_id, current_user, db)
+    current_odo = refresh_vehicle_current_odo(vehicle, db)
+    db.commit()
+    db.refresh(log)
+    return {"success": True, "log": serialize_log(log), "current_odo_km": current_odo}
+
+
+@router.delete("/{log_id}")
+def delete_log(log_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    log = ensure_log(log_id, current_user, db)
+    vehicle = ensure_vehicle(log.vehicle_id, current_user, db)
+    db.delete(log)
+    db.flush()
+    current_odo = refresh_vehicle_current_odo(vehicle, db)
+    db.commit()
+    return {"success": True, "current_odo_km": current_odo}

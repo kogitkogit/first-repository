@@ -28,6 +28,7 @@ export function useDrivingAnalysis(vehicle, apiClient = api) {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [comparisonValue, setComparisonValue] = useState(null);
+  const [overallRange, setOverallRange] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -69,6 +70,8 @@ export function useDrivingAnalysis(vehicle, apiClient = api) {
           apiClient.get("/odometer/range", { params: { vehicleId: vehicle.id, fromDate: from, toDate: to } }),
           apiClient.get("/odometer/range", { params: { vehicleId: vehicle.id, fromDate: prevFrom, toDate: prevTo } }),
         ]);
+      } else if (distanceMode === "overall") {
+        response = await apiClient.get("/odometer/overall", { params: { vehicleId: vehicle.id } });
       } else if (rangeMode === "monthly") {
         const prevMonth = selectedMonth === 1 ? 12 : selectedMonth - 1;
         const prevYear = selectedMonth === 1 ? selectedYear - 1 : selectedYear;
@@ -82,6 +85,15 @@ export function useDrivingAnalysis(vehicle, apiClient = api) {
 
       const value = Number(response?.data?.distance);
       setDistanceValue(Number.isFinite(value) ? value : null);
+      setOverallRange(
+        distanceMode === "overall"
+          ? {
+              startDate: response?.data?.start_date || null,
+              endDate: response?.data?.end_date || null,
+              count: response?.data?.count || 0,
+            }
+          : null,
+      );
 
       const comparison = Number(comparisonResponse?.data?.distance);
       setComparisonValue(Number.isFinite(comparison) ? comparison : null);
@@ -89,6 +101,7 @@ export function useDrivingAnalysis(vehicle, apiClient = api) {
       console.error("주행거리 분석 데이터를 불러오지 못했습니다.", fetchError);
       setDistanceValue(null);
       setComparisonValue(null);
+      setOverallRange(null);
       setError("주행거리 분석 데이터를 불러오지 못했습니다.");
     } finally {
       setLoading(false);
@@ -102,18 +115,20 @@ export function useDrivingAnalysis(vehicle, apiClient = api) {
   const formattedDistance = formatDistance(distanceValue);
   const distanceLabel = useMemo(() => {
     if (distanceMode === "recent") return "최근 30일 주행거리";
+    if (distanceMode === "overall") return "전체 기간 주행거리";
     if (rangeMode === "monthly") return `${monthLabel(selectedYear, selectedMonth)} 주행거리`;
     return "선택 기간 주행거리";
   }, [distanceMode, rangeMode, selectedMonth, selectedYear]);
 
   const trendLabel = useMemo(() => {
+    if (distanceMode === "overall") return "전체 기록 기준";
     if (comparisonValue == null || distanceValue == null) return "비교 데이터 없음";
     const diff = distanceValue - comparisonValue;
     if (diff === 0) return "직전 구간과 동일";
     return diff > 0
       ? `직전 구간보다 ${diff.toLocaleString()} km 증가`
       : `직전 구간보다 ${Math.abs(diff).toLocaleString()} km 감소`;
-  }, [comparisonValue, distanceValue]);
+  }, [comparisonValue, distanceMode, distanceValue]);
 
   return {
     distanceMode,
@@ -130,6 +145,7 @@ export function useDrivingAnalysis(vehicle, apiClient = api) {
     setToDate,
     distanceValue,
     comparisonValue,
+    overallRange,
     formattedDistance,
     distanceLabel,
     trendLabel,
@@ -177,6 +193,7 @@ export default function DrivingAnalysisPanel({ vehicle, onVehicleRefresh }) {
     formattedDistance,
     trendLabel,
     comparisonValue,
+    overallRange,
     loading,
     error,
   } = analysis;
@@ -278,6 +295,7 @@ export default function DrivingAnalysisPanel({ vehicle, onVehicleRefresh }) {
               className="h-10 rounded-lg border border-border-light bg-background-light px-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
             >
               <option value="recent">최근 30일</option>
+              <option value="overall">전체 기간</option>
               <option value="range">기간 지정</option>
             </select>
             {distanceMode === "range" ? (
@@ -350,12 +368,24 @@ export default function DrivingAnalysisPanel({ vehicle, onVehicleRefresh }) {
           <DrivingAnalysisCard
             title={distanceLabel}
             value={loading ? "불러오는 중..." : formattedDistance}
-            caption={distanceMode === "recent" ? "오늘을 포함한 최근 30일 기준" : undefined}
+            caption={
+              distanceMode === "recent"
+                ? "오늘을 포함한 최근 30일 기준"
+                : distanceMode === "overall" && overallRange?.count
+                ? `${formatDateLabel(overallRange.startDate)} ~ ${formatDateLabel(overallRange.endDate)} · 총 ${overallRange.count}건`
+                : undefined
+            }
           />
           <DrivingAnalysisCard
             title="비교 결과"
             value={loading ? "불러오는 중..." : trendLabel}
-            caption={comparisonValue != null ? `이전 구간: ${comparisonValue.toLocaleString()} km` : "비교할 이전 구간 데이터가 부족합니다."}
+            caption={
+              distanceMode === "overall"
+                ? "전체 기간은 직전 구간과 비교하지 않습니다."
+                : comparisonValue != null
+                ? `이전 구간: ${comparisonValue.toLocaleString()} km`
+                : "비교할 이전 구간 데이터가 부족합니다."
+            }
           />
         </div>
       </section>

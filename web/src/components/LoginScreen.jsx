@@ -18,7 +18,7 @@ const AGREEMENT_SUMMARY = [
   },
   {
     title: "비회원 시작은 어떻게 되나요?",
-    body: "비회원으로 바로 시작할 수 있지만, 앱 삭제나 기기 변경 시 데이터 복구가 어려울 수 있습니다.",
+    body: "같은 기기에서는 자동으로 이어서 사용할 수 있지만, 앱 삭제나 기기 변경 시 데이터 복구가 어려울 수 있습니다.",
   },
   {
     title: "광고는 어떻게 처리되나요?",
@@ -43,6 +43,7 @@ export default function LoginScreen({ onLoginSuccess }) {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [serverWarming, setServerWarming] = useState(true);
   const [activeDoc, setActiveDoc] = useState(null);
 
   useEffect(() => {
@@ -50,6 +51,23 @@ export default function LoginScreen({ onLoginSuccess }) {
     const storedAgreement = localStorage.getItem(AGREEMENT_STORAGE_KEY) === "1";
     setAgreed(storedAgreement);
     setMode(storedAgreement ? "choice" : "consent");
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const prewarmServer = async () => {
+      try {
+        await api.get("/health", { timeout: 12000 });
+      } catch (error) {
+        console.warn("서버 준비 확인 실패:", error);
+      } finally {
+        if (!cancelled) setServerWarming(false);
+      }
+    };
+    prewarmServer();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const canGuestStart = useMemo(() => agreed, [agreed]);
@@ -80,7 +98,8 @@ export default function LoginScreen({ onLoginSuccess }) {
       onLoginSuccess(access_token, accountName, user_id, account_type || "registered");
     } catch (err) {
       console.error("로그인 오류:", err);
-      showToast({ tone: "error", message: "로그인에 실패했습니다. 계정 정보를 확인해주세요." });
+      const message = err?.code === "ECONNABORTED" ? "서버를 준비하는 중입니다. 잠시 후 다시 시도해주세요." : "로그인에 실패했습니다. 계정 정보를 확인해주세요.";
+      showToast({ tone: "error", message });
     } finally {
       setLoading(false);
     }
@@ -96,7 +115,8 @@ export default function LoginScreen({ onLoginSuccess }) {
       onLoginSuccess(access_token, accountName, user_id, account_type || "guest");
     } catch (error) {
       console.error("비회원 시작 오류:", error);
-      showToast({ tone: "error", message: "비회원 시작에 실패했습니다. 다시 시도해주세요." });
+      const message = error?.code === "ECONNABORTED" ? "서버를 준비하는 중입니다. 잠시 후 다시 시도해주세요." : "비회원 시작에 실패했습니다. 다시 시도해주세요.";
+      showToast({ tone: "error", message });
     } finally {
       setLoading(false);
     }
@@ -174,6 +194,7 @@ export default function LoginScreen({ onLoginSuccess }) {
             </div>
             <h1 className="text-3xl font-bold">{APP_NAME} 시작하기</h1>
             <p className="mt-3 text-base text-subtext-light">원하는 방식으로 바로 시작할 수 있습니다.</p>
+            {serverWarming ? <p className="mt-2 text-sm font-medium text-primary">서버 연결을 준비하는 중입니다. 첫 실행 시 잠시 걸릴 수 있습니다.</p> : null}
           </div>
 
           <div className="space-y-3">
@@ -193,7 +214,7 @@ export default function LoginScreen({ onLoginSuccess }) {
               disabled={loading}
             >
               <span className="text-base font-bold">비회원으로 시작하기</span>
-              <span className="mt-1 text-sm text-subtext-light">앱 삭제나 기기 변경 시 데이터 복구가 어려울 수 있습니다.</span>
+              <span className="mt-1 text-sm text-subtext-light">같은 기기에서는 자동으로 이어서 사용할 수 있지만, 앱 삭제나 기기 변경 시 데이터 복구가 어려울 수 있습니다.</span>
             </button>
 
             <button
@@ -218,6 +239,7 @@ export default function LoginScreen({ onLoginSuccess }) {
           </div>
           <h1 className="text-3xl font-bold">서비스 이용 동의</h1>
           <p className="mt-3 text-base text-subtext-light">앱을 사용하려면 아래 내용을 확인하고 동의해주세요.</p>
+          {serverWarming ? <p className="mt-2 text-sm font-medium text-primary">서버 연결을 준비하는 중입니다. 첫 실행 시 잠시 걸릴 수 있습니다.</p> : null}
         </div>
 
         <section className="rounded-3xl border border-border-light bg-surface-light p-5 shadow-card">

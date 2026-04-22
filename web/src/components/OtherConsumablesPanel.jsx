@@ -331,7 +331,9 @@ function DetailModal({ open, item, onClose, onChange, onSaveHistory, onSaveConfi
               </button>
               </div>
             <label className="flex flex-col gap-2 text-sm">
-              <span className="text-xs font-semibold text-subtext-light">마지막 교체 주행거리</span>
+              <span className="text-xs font-semibold text-subtext-light">
+                마지막 교체 주행거리 {item.mode === "distance" ? "(필수)" : "(선택)"}
+              </span>
               <input
                 type="number"
                 placeholder="예: 125000"
@@ -341,7 +343,9 @@ function DetailModal({ open, item, onClose, onChange, onSaveHistory, onSaveConfi
               />
             </label>
             <label className="flex flex-col gap-2 text-sm">
-              <span className="text-xs font-semibold text-subtext-light">마지막 교체일</span>
+              <span className="text-xs font-semibold text-subtext-light">
+                마지막 교체일 {item.mode === "time" ? "(필수)" : "(선택)"}
+              </span>
               <input
                 type="date"
                 value={item.lastDate || ""}
@@ -654,14 +658,26 @@ export default function OtherConsumablesPanel({ currentMileage, vehicleId, fuelT
       return;
     }
 
-    const odo = toIntOrNull(it.lastOdo ?? currentMileage);
+    const mode = it.mode || "distance";
+    const odo = toIntOrNull(it.lastOdo);
     const dateYmd = isYmd(it.lastDate) ? it.lastDate : null;
 
-    if (odo === null || !dateYmd) {
+    if (mode === "distance" && odo === null) {
       setItems((prev) =>
         prev.map((row) =>
           row.key === key
-            ? { ...row, flash: "err:마지막 교체 주행거리와 교체일을 모두 입력해주세요." }
+            ? { ...row, flash: "err:거리 기준은 마지막 교체 주행거리를 입력해주세요." }
+            : row
+        )
+      );
+      return;
+    }
+
+    if (mode === "time" && !dateYmd) {
+      setItems((prev) =>
+        prev.map((row) =>
+          row.key === key
+            ? { ...row, flash: "err:기간 기준은 마지막 교체일을 입력해주세요." }
             : row
         )
       );
@@ -689,14 +705,18 @@ export default function OtherConsumablesPanel({ currentMileage, vehicleId, fuelT
             : row
         )
       );
-      setMaxOdoByKind((prev) => ({
-        ...prev,
-        [it.kind]: Math.max(prev[it.kind] ?? 0, odo),
-      }));
-      setMaxDateByKind((prev) => ({
-        ...prev,
-        [it.kind]: dateYmd,
-      }));
+      if (odo !== null) {
+        setMaxOdoByKind((prev) => ({
+          ...prev,
+          [it.kind]: Math.max(prev[it.kind] ?? 0, odo),
+        }));
+      }
+      if (dateYmd) {
+        setMaxDateByKind((prev) => ({
+          ...prev,
+          [it.kind]: dateYmd,
+        }));
+      }
       setTimeout(() => {
         setItems((prev) => prev.map((row) => (row.key === key ? { ...row, flash: null } : row)));
       }, 1600);

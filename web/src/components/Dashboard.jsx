@@ -24,6 +24,7 @@ const DUE_TONE_PRIORITY = { danger: 0, warn: 1, ok: 2, muted: 3 };
 const FUEL_TYPE_LABEL = {
   gasoline: "휘발유",
   diesel: "경유",
+  lpg: "LPG",
   hybrid: "하이브리드",
   phev: "플러그인 하이브리드",
   ev: "전기",

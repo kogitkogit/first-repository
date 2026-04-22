@@ -15,6 +15,7 @@ const RANGE_FILTERS = [
 const ENERGY_MODE = {
   gasoline: "fuel",
   diesel: "fuel",
+  lpg: "fuel",
   hybrid: "fuel",
   phev: "both",
   ev: "charge",
@@ -24,6 +25,34 @@ const INPUT_CLASS =
   "block w-full rounded-xl border border-border-light bg-background-light px-3 py-2 text-sm text-text-light placeholder:text-subtext-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30";
 
 const money = (value) => `${Number(value || 0).toLocaleString()} 원`;
+
+function fuelLabels(fuelType) {
+  const isLpg = fuelType === "lpg";
+  return {
+    panelTitle: isLpg ? "LPG 충전 관리" : "주유 관리",
+    panelDescription: isLpg ? "LPG 충전 기록과 평균 리터당 비용을 빠르게 확인하세요." : "주유 기록과 평균 리터당 비용을 빠르게 확인하세요.",
+    addButton: isLpg ? "LPG 충전 기록 추가" : "주유 기록 추가",
+    tab: isLpg ? "LPG" : "주유",
+    avgTitle: isLpg ? "평균 연비" : "평균 연비",
+    totalCostTitle: isLpg ? "누적 LPG 비용" : "누적 주유 비용",
+    amountTitle: isLpg ? "선택 기간 충전량" : "선택 기간 주유량",
+    empty: isLpg ? "조건에 맞는 LPG 충전 기록이 없습니다." : "조건에 맞는 주유 기록이 없습니다.",
+    fullOnly: isLpg ? "가득 충전만 보기" : "가득 주유만 보기",
+    full: isLpg ? "가득 충전" : "가득 주유",
+    partial: isLpg ? "부분 충전" : "부분 주유",
+    modalCreate: isLpg ? "LPG 충전 기록 추가" : "주유 기록 추가",
+    modalEdit: isLpg ? "LPG 충전 기록 수정" : "주유 기록 수정",
+    amountInput: isLpg ? "충전량 (L)" : "주유량 (L)",
+    priceInput: isLpg ? "충전 금액 (원)" : "총 금액 (원)",
+    guide: isLpg ? "충전량은 영수증의 L 단위 수치를 그대로 입력하세요." : "주유량은 영수증의 L 단위 수치를 그대로 입력하세요. 가득 주유는 소수점 1자리까지 입력하면 더 정확합니다.",
+    preview: isLpg ? "충전량과 총 금액을 입력하면 리터당 비용이 표시됩니다." : "주유량과 총 금액을 입력하면 리터당 비용이 표시됩니다.",
+    detailTitle: isLpg ? "LPG 충전 기록 상세" : "주유 기록 상세",
+    dateLabel: isLpg ? "충전 날짜" : "주유 날짜",
+    amountLabel: isLpg ? "충전량" : "주유량",
+    methodLabel: isLpg ? "충전 방식" : "주유 방식",
+    deleteTitle: isLpg ? "LPG 충전 기록 삭제" : "주유 기록 삭제",
+  };
+}
 
 function rangeOf(key) {
   const item = RANGE_FILTERS.find((entry) => entry.key === key);
@@ -167,6 +196,7 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
   const [pendingDelete, setPendingDelete] = useState(null);
 
   const mode = ENERGY_MODE[vehicle?.fuelType] || "fuel";
+  const labels = fuelLabels(vehicle?.fuelType);
   const showFuel = mode === "fuel" || mode === "both";
   const showCharge = mode === "charge" || mode === "both";
   const range = useMemo(() => rangeOf(rangeKey), [rangeKey]);
@@ -347,27 +377,27 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-xl font-bold text-text-light">
-              {mode === "charge" ? "충전 관리" : mode === "both" ? "주유/충전 관리" : "주유 관리"}
+              {mode === "charge" ? "충전 관리" : mode === "both" ? "주유/충전 관리" : labels.panelTitle}
             </h1>
             <p className="text-sm text-subtext-light">
-              {mode === "charge" ? "전기차 충전 기록과 에너지 비용을 관리합니다." : mode === "both" ? "주유와 충전 기록을 차량 타입에 맞게 함께 관리합니다." : "주유 기록과 평균 리터당 비용을 빠르게 확인하세요."}
+              {mode === "charge" ? "전기차 충전 기록과 에너지 비용을 관리합니다." : mode === "both" ? "주유와 충전 기록을 차량 타입에 맞게 함께 관리합니다." : labels.panelDescription}
             </p>
           </div>
           <button type="button" className="flex items-center justify-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90" onClick={() => setFormState({ open: true, type: tab, mode: "create", id: null })}>
             <span className="material-symbols-outlined text-base">add</span>
-            {tab === "charge" ? "충전 기록 추가" : "주유 기록 추가"}
+            {tab === "charge" ? "충전 기록 추가" : labels.addButton}
           </button>
         </div>
         {mode === "both" ? (
           <div className="inline-flex rounded-full border border-border-light p-1 text-sm font-semibold">
-            <button type="button" className={`rounded-full px-4 py-1.5 ${tab === "fuel" ? "bg-primary text-white" : "text-subtext-light"}`} onClick={() => setTab("fuel")}>주유</button>
+            <button type="button" className={`rounded-full px-4 py-1.5 ${tab === "fuel" ? "bg-primary text-white" : "text-subtext-light"}`} onClick={() => setTab("fuel")}>{labels.tab}</button>
             <button type="button" className={`rounded-full px-4 py-1.5 ${tab === "charge" ? "bg-primary text-white" : "text-subtext-light"}`} onClick={() => setTab("charge")}>충전</button>
           </div>
         ) : null}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <SummaryCard title={tab === "charge" ? "평균 전비" : "평균 연비"} value={tab === "charge" ? (chargeStats?.avg_km_per_kwh != null ? `${Number(chargeStats.avg_km_per_kwh).toFixed(1)} km/kWh` : "집계 없음") : (fuelStats?.avg_km_per_l != null ? `${Number(fuelStats.avg_km_per_l).toFixed(1)} km/L` : "집계 없음")} caption={tab === "charge" ? "충전 기록 기준" : "가득 주유 기록 기준"} />
-          <SummaryCard title={tab === "charge" ? "누적 충전 비용" : "누적 주유 비용"} value={money(tab === "charge" ? chargeStats?.total_cost : fuelStats?.total_cost)} />
-          <SummaryCard title={tab === "charge" ? "선택 기간 충전량" : "선택 기간 주유량"} value={`${Number(visibleSummary.totalAmount || 0).toFixed(1)}${tab === "charge" ? " kWh" : " L"}`} caption={`총 ${visibleRecords.length}건`} />
+          <SummaryCard title={tab === "charge" ? "누적 충전 비용" : labels.totalCostTitle} value={money(tab === "charge" ? chargeStats?.total_cost : fuelStats?.total_cost)} />
+          <SummaryCard title={tab === "charge" ? "선택 기간 충전량" : labels.amountTitle} value={`${Number(visibleSummary.totalAmount || 0).toFixed(1)}${tab === "charge" ? " kWh" : " L"}`} caption={`총 ${visibleRecords.length}건`} />
           <SummaryCard title={tab === "charge" ? "평균 kWh당 비용" : "평균 리터당 비용"} value={visibleSummary.avgUnit ? money(visibleSummary.avgUnit) : "0 원"} caption={visibleSummary.latest ? `${visibleSummary.latest.date} · ${tab === "charge" ? visibleSummary.latest.energy_kwh : visibleSummary.latest.liters}${tab === "charge" ? " kWh" : " L"}` : "최근 기록 없음"} />
         </div>
       </section>
@@ -382,7 +412,7 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
           {tab === "fuel" ? (
             <label className="ml-auto inline-flex items-center gap-2 text-xs text-subtext-light">
               <input type="checkbox" checked={onlyFull} onChange={(e) => setOnlyFull(e.target.checked)} className="h-4 w-4 rounded border-border-light text-primary focus:ring-primary" />
-              가득 주유만 보기
+              {labels.fullOnly}
             </label>
           ) : null}
         </div>
@@ -390,7 +420,7 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
 
       <section className="space-y-3">
         {loading ? <div className="rounded-2xl border border-border-light bg-surface-light px-4 py-6 text-center text-sm text-subtext-light shadow-sm">데이터를 불러오는 중입니다...</div> : null}
-        {!loading && visibleRecords.length === 0 ? <div className="rounded-2xl border border-dashed border-border-light bg-surface-light px-4 py-6 text-center text-sm text-subtext-light shadow-sm">{tab === "charge" ? "조건에 맞는 충전 기록이 없습니다." : "조건에 맞는 주유 기록이 없습니다."}</div> : null}
+        {!loading && visibleRecords.length === 0 ? <div className="rounded-2xl border border-dashed border-border-light bg-surface-light px-4 py-6 text-center text-sm text-subtext-light shadow-sm">{tab === "charge" ? "조건에 맞는 충전 기록이 없습니다." : labels.empty}</div> : null}
         {!loading && visibleRecords.map((record) => tab === "charge" ? (
           <RecordCard
             key={`charge-${record.id}`}
@@ -415,7 +445,7 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
             chips={
               <>
                 <span className="rounded-full bg-background-light px-2.5 py-0.5 font-semibold">{Number(record.odo_km || 0).toLocaleString()}km</span>
-                <span className={`rounded-full px-2.5 py-0.5 font-semibold ${record.is_full ? "bg-primary/10 text-primary" : "bg-amber-100 text-amber-700"}`}>{record.is_full ? "가득 주유" : "부분 주유"}</span>
+                <span className={`rounded-full px-2.5 py-0.5 font-semibold ${record.is_full ? "bg-primary/10 text-primary" : "bg-amber-100 text-amber-700"}`}>{record.is_full ? labels.full : labels.partial}</span>
                 <span>{Number(record.liters || 0) > 0 ? `리터당 ${money(Math.round(Number(record.price_total || 0) / Number(record.liters || 1)))}` : ""}</span>
               </>
             }
@@ -427,20 +457,20 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
       </section>
 
       {formState.open && formState.type === "fuel" ? (
-        <CenterModal title={formState.mode === "edit" ? "주유 기록 수정" : "주유 기록 추가"} onClose={() => setFormState({ open: false, type: "fuel", mode: "create", id: null })} onSave={() => saveFuel().catch(() => showToast({ tone: "error", message: "주유 기록을 저장하지 못했습니다." }))} saveLabel="저장">
+        <CenterModal title={formState.mode === "edit" ? labels.modalEdit : labels.modalCreate} onClose={() => setFormState({ open: false, type: "fuel", mode: "create", id: null })} onSave={() => saveFuel().catch(() => showToast({ tone: "error", message: "기록을 저장하지 못했습니다." }))} saveLabel="저장">
           <div className="flex flex-wrap gap-2">
             <button type="button" className="rounded-full border border-border-light px-3 py-1.5 text-xs font-semibold text-subtext-light hover:text-primary" onClick={() => setFuelForm((prev) => ({ ...prev, odo_km: vehicle?.odo_km ? String(vehicle.odo_km) : prev.odo_km }))}>현재 주행거리 사용</button>
             {latestFuel ? <button type="button" className="rounded-full border border-border-light px-3 py-1.5 text-xs font-semibold text-subtext-light hover:text-primary" onClick={() => setFuelForm((prev) => ({ ...prev, liters: latestFuel.liters != null ? String(latestFuel.liters) : prev.liters, price_total: latestFuel.price_total != null ? String(latestFuel.price_total) : prev.price_total }))}>최근값 복사</button> : null}
           </div>
           <input type="date" className={INPUT_CLASS} value={fuelForm.date} onChange={(e) => setFuelForm((prev) => ({ ...prev, date: e.target.value }))} />
           <div className="rounded-2xl border border-border-light bg-background-light px-4 py-3 text-sm text-subtext-light">
-            주유량은 영수증의 <span className="font-semibold text-text-light">L 단위 수치</span>를 그대로 입력하세요. 가득 주유는 소수점 1자리까지 입력하면 더 정확합니다.
+            {labels.guide}
           </div>
-          <input type="number" step="0.1" className={INPUT_CLASS} placeholder="주유량 (L)" value={fuelForm.liters} onChange={(e) => setFuelForm((prev) => ({ ...prev, liters: e.target.value }))} />
-          <input type="number" className={INPUT_CLASS} placeholder="총 금액 (원)" value={fuelForm.price_total} onChange={(e) => setFuelForm((prev) => ({ ...prev, price_total: e.target.value }))} />
+          <input type="number" step="0.1" className={INPUT_CLASS} placeholder={labels.amountInput} value={fuelForm.liters} onChange={(e) => setFuelForm((prev) => ({ ...prev, liters: e.target.value }))} />
+          <input type="number" className={INPUT_CLASS} placeholder={labels.priceInput} value={fuelForm.price_total} onChange={(e) => setFuelForm((prev) => ({ ...prev, price_total: e.target.value }))} />
           <input type="number" className={INPUT_CLASS} placeholder="주행거리 (km)" value={fuelForm.odo_km} onChange={(e) => setFuelForm((prev) => ({ ...prev, odo_km: e.target.value }))} />
-          <div className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-primary">{fuelPreview ? `예상 리터당 비용 ${money(fuelPreview)}` : "주유량과 총 금액을 입력하면 리터당 비용이 표시됩니다."}</div>
-          <label className="inline-flex items-center gap-2 text-sm text-subtext-light"><input type="checkbox" checked={fuelForm.is_full} onChange={(e) => setFuelForm((prev) => ({ ...prev, is_full: e.target.checked }))} className="h-4 w-4 rounded border-border-light text-primary focus:ring-primary" />가득 주유</label>
+          <div className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-primary">{fuelPreview ? `예상 리터당 비용 ${money(fuelPreview)}` : labels.preview}</div>
+          <label className="inline-flex items-center gap-2 text-sm text-subtext-light"><input type="checkbox" checked={fuelForm.is_full} onChange={(e) => setFuelForm((prev) => ({ ...prev, is_full: e.target.checked }))} className="h-4 w-4 rounded border-border-light text-primary focus:ring-primary" />{labels.full}</label>
         </CenterModal>
       ) : null}
 
@@ -465,7 +495,7 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
 
       {selected?.type === "fuel" ? (
         <DetailModal
-          title="주유 기록 상세"
+          title={labels.detailTitle}
           onClose={() => setSelected(null)}
           onEdit={() => {
             openEdit(selected.record);
@@ -473,11 +503,11 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
           }}
           onDelete={() => setPendingDelete({ type: "fuel", id: selected.record.id })}
           rows={[
-            { label: "주유 날짜", value: selected.record.date },
-            { label: "주유량", value: `${Number(selected.record.liters || 0).toFixed(1)} L` },
+            { label: labels.dateLabel, value: selected.record.date },
+            { label: labels.amountLabel, value: `${Number(selected.record.liters || 0).toFixed(1)} L` },
             { label: "총 금액", value: money(selected.record.price_total) },
             { label: "주행거리", value: `${Number(selected.record.odo_km || 0).toLocaleString()} km` },
-            { label: "주유 방식", value: selected.record.is_full ? "가득 주유" : "부분 주유" },
+            { label: labels.methodLabel, value: selected.record.is_full ? labels.full : labels.partial },
           ]}
         />
       ) : null}
@@ -504,7 +534,7 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
 
       <ConfirmDialog
         open={Boolean(pendingDelete)}
-        title={pendingDelete?.type === "charging" ? "충전 기록 삭제" : "주유 기록 삭제"}
+        title={pendingDelete?.type === "charging" ? "충전 기록 삭제" : labels.deleteTitle}
         description="삭제 후에는 복구할 수 없습니다."
         confirmLabel="삭제"
         cancelLabel="취소"

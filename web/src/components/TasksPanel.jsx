@@ -33,6 +33,12 @@ function resolveRoute(item) {
   }
 }
 
+function energyRecordLabel(fuelType) {
+  if (fuelType === "ev") return "충전 기록";
+  if (fuelType === "lpg") return "LPG 충전 기록";
+  return "주유 기록";
+}
+
 export default function TasksPanel({ vehicle, legalSummary = {} }) {
   const navigate = useNavigate();
   const [stats, setStats] = useState({ avg_km_per_l: null, total_cost: null });
@@ -108,7 +114,7 @@ export default function TasksPanel({ vehicle, legalSummary = {} }) {
       },
       {
         key: "fuel",
-        label: vehicle?.fuelType === "ev" ? "첫 충전 기록 추가" : "첫 주유 기록 추가",
+        label: `첫 ${energyRecordLabel(vehicle?.fuelType)} 추가`,
         done: stats?.total_cost != null && Number(stats.total_cost) > 0,
         actionLabel: "에너지 관리 열기",
         action: () => navigate("/fuel"),
@@ -174,8 +180,8 @@ export default function TasksPanel({ vehicle, legalSummary = {} }) {
       items.push({
         id: "missing-energy",
         area: "에너지 관리",
-        name: vehicle?.fuelType === "ev" ? "충전 기록" : "주유 기록",
-        status: vehicle?.fuelType === "ev" ? "첫 충전 기록 작성 필요" : "첫 주유 기록 작성 필요",
+        name: energyRecordLabel(vehicle?.fuelType),
+        status: `첫 ${energyRecordLabel(vehicle?.fuelType)} 작성 필요`,
         tone: "muted",
       });
     }

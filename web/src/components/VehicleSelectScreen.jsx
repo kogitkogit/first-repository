@@ -5,6 +5,7 @@ import ConfirmDialog from "./ui/ConfirmDialog";
 const FUEL_TYPE_OPTIONS = [
   { value: "gasoline", label: "휘발유" },
   { value: "diesel", label: "경유" },
+  { value: "lpg", label: "LPG" },
   { value: "hybrid", label: "하이브리드" },
   { value: "phev", label: "플러그인 하이브리드" },
   { value: "ev", label: "전기" },
