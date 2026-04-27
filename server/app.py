@@ -1,6 +1,9 @@
+import logging
+from urllib.parse import urlparse
+
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -8,6 +11,7 @@ from sqlalchemy import text
 
 from api import ai_dashboard, auth, charging, consumables, expenses, fuel, legal, maintenance, notifications, odometer, tires, vehicles
 from core.config import settings
+from db.instrumentation import begin_request, end_request, setup_db_timing_logging
 from db.session import engine
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -18,6 +22,7 @@ BACKUP_POLICY_PATH = BASE_DIR / "backup_recovery_policy_public.html"
 IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI()
+logger = logging.getLogger("carcare.app")
 
 
 def load_privacy_policy_html() -> str:
@@ -48,6 +53,33 @@ app.include_router(legal.router, prefix="/api/legal", tags=["legal"])
 app.include_router(ai_dashboard.router, prefix="/api/ai_dashboard", tags=["ai_dashboard"])
 app.include_router(odometer.router, prefix="/api/odometer", tags=["odometer"])
 app.include_router(tires.router, prefix="/api")
+setup_db_timing_logging(engine)
+
+
+def _extract_db_region_hint() -> str:
+    host = urlparse(settings.DATABASE_URL).hostname or ""
+    for part in host.split("."):
+        if part.count("-") >= 2 and any(char.isdigit() for char in part):
+            return part
+    return ""
+
+
+@app.on_event("startup")
+def startup_diagnostics():
+    app_region = settings.APP_REGION_HINT.strip()
+    db_region = _extract_db_region_hint()
+    if app_region and db_region and app_region != db_region:
+        logger.warning("region_mismatch app_region=%s db_region=%s", app_region, db_region)
+    elif db_region:
+        logger.info("db_region_hint=%s", db_region)
+
+
+@app.middleware("http")
+async def timing_middleware(request: Request, call_next):
+    begin_request(request.url.path)
+    response = await call_next(request)
+    end_request(response.status_code)
+    return response
 
 
 @app.get("/api/health")

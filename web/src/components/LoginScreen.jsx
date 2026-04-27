@@ -217,7 +217,7 @@ export default function LoginScreen({ onLoginSuccess }) {
             </div>
             <h1 className="text-3xl font-bold">{APP_NAME} 시작하기</h1>
             <p className="mt-3 text-base text-subtext-light">원하는 방식으로 바로 시작할 수 있습니다.</p>
-            {serverWarming ? <p className="mt-2 text-sm font-medium text-primary">서버 연결을 준비하는 중입니다. 첫 실행 시 잠시 걸릴 수 있습니다.</p> : null}
+            {serverWarming ? <p className="mt-2 text-sm font-medium text-primary">서버를 연결하는 중입니다...</p> : null}
           </div>
 
           <div className="space-y-3">

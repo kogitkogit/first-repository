@@ -1,8 +1,9 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
+from api.legal import build_legal_summary_response
 from core.auth import get_current_user
 from db.session import get_db
 from models.CarMaker import CarMaker
@@ -50,7 +51,38 @@ def add_vehicle(
 
 @router.get("/list")
 def list_vehicles(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return db.query(Vehicle).filter(Vehicle.user_id == current_user.id).all()
+    return (
+        db.query(Vehicle)
+        .options(
+            load_only(
+                Vehicle.id,
+                Vehicle.user_id,
+                Vehicle.plate_no,
+                Vehicle.maker,
+                Vehicle.model,
+                Vehicle.makerType,
+                Vehicle.fuelType,
+                Vehicle.year,
+                Vehicle.odo_km,
+                Vehicle.owner_name,
+            )
+        )
+        .filter(Vehicle.user_id == current_user.id)
+        .order_by(Vehicle.id.desc())
+        .all()
+    )
+
+
+@router.get("/bootstrap")
+def bootstrap(vehicleId: int | None = None, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    vehicles = list_vehicles(db, current_user)
+    legal_summary = None
+    if vehicleId:
+        ensure_vehicle = next((vehicle for vehicle in vehicles if vehicle.id == vehicleId), None)
+        if ensure_vehicle:
+            records = db.query(LegalInfo).filter(LegalInfo.vehicle_id == vehicleId, LegalInfo.user_id == current_user.id).all()
+            legal_summary = build_legal_summary_response(records).model_dump()
+    return {"vehicles": vehicles, "legalSummary": legal_summary}
 
 
 @router.delete("/{vehicle_id}")

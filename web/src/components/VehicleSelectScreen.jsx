@@ -12,8 +12,9 @@ const FUEL_TYPE_OPTIONS = [
 ];
 
 const fuelTypeLabel = (value) => FUEL_TYPE_OPTIONS.find((option) => option.value === value)?.label || value || null;
+const makerCache = { domestic: null, abroad: null };
 
-export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, onDeleted, userId }) {
+export default function VehicleSelectScreen({ vehicles, loading = false, loaded = false, error: listError = "", onRetry, onSelect, onCreated, onDeleted, userId }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     plate_no: "",
@@ -28,20 +29,48 @@ export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, onD
   const [domesticMakers, setDomesticMakers] = useState([]);
   const [abroadMakers, setAbroadMakers] = useState([]);
   const [models, setModels] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [makersLoading, setMakersLoading] = useState(false);
   const [error, setError] = useState("");
   const [pendingDelete, setPendingDelete] = useState(null);
 
   useEffect(() => {
-    api
-      .get("/vehicles/makers/domestic")
-      .then((res) => setDomesticMakers(Array.isArray(res.data) ? res.data : res.data?.makers || []))
-      .catch(() => {});
-    api
-      .get("/vehicles/makers/abroad")
-      .then((res) => setAbroadMakers(Array.isArray(res.data) ? res.data : res.data?.makers || []))
-      .catch(() => {});
-  }, []);
+    if (!open) return undefined;
+    let active = true;
+
+    const loadMakers = async () => {
+      if (makerCache.domestic && makerCache.abroad) {
+        setDomesticMakers(makerCache.domestic);
+        setAbroadMakers(makerCache.abroad);
+        return;
+      }
+
+      setMakersLoading(true);
+      try {
+        const [domesticRes, abroadRes] = await Promise.all([api.get("/vehicles/makers/domestic"), api.get("/vehicles/makers/abroad")]);
+        const domestic = Array.isArray(domesticRes.data) ? domesticRes.data : domesticRes.data?.makers || [];
+        const abroad = Array.isArray(abroadRes.data) ? abroadRes.data : abroadRes.data?.makers || [];
+        makerCache.domestic = domestic;
+        makerCache.abroad = abroad;
+        if (!active) return;
+        setDomesticMakers(domestic);
+        setAbroadMakers(abroad);
+      } catch (_) {
+        if (!active) return;
+        setError("제조사 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
+      } finally {
+        if (active) {
+          setMakersLoading(false);
+        }
+      }
+    };
+
+    loadMakers();
+
+    return () => {
+      active = false;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (form.maker) {
@@ -79,7 +108,7 @@ export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, onD
 
   const createVehicle = async (e) => {
     e.preventDefault();
-    setLoading(true);
+    setSubmitting(true);
     setError("");
     try {
       const payload = {
@@ -113,7 +142,7 @@ export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, onD
       console.error("차량 등록 오류:", err);
       setError("차량 등록 중 문제가 발생했습니다. 입력값을 확인해주세요.");
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
@@ -135,6 +164,41 @@ export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, onD
   };
 
   const renderList = () => {
+    if (listError && !loading) {
+      return (
+        <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-status-warning/30 bg-status-warning/5 px-6 py-12 text-center shadow-card">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-status-warning/15 text-status-warning">
+            <span className="material-symbols-outlined text-3xl">cloud_off</span>
+          </div>
+          <div className="space-y-1">
+            <p className="text-base font-semibold text-text-light">{listError}</p>
+            <p className="text-sm text-subtext-light">서버가 준비되면 다시 불러올 수 있습니다.</p>
+          </div>
+          <button
+            type="button"
+            className="flex h-11 min-w-[140px] items-center justify-center rounded-lg bg-primary px-4 text-sm font-semibold text-white transition hover:bg-primary/90"
+            onClick={() => onRetry?.()}
+          >
+            다시 시도
+          </button>
+        </div>
+      );
+    }
+
+    if (!loaded || loading) {
+      return (
+        <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border-light bg-surface-light px-6 py-12 text-center shadow-card">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <span className="material-symbols-outlined animate-spin text-3xl">progress_activity</span>
+          </div>
+          <div className="space-y-1">
+            <p className="text-base font-semibold text-text-light">차량 목록을 불러오는 중입니다</p>
+            <p className="text-sm text-subtext-light">서버 상태에 따라 몇 초 정도 걸릴 수 있습니다.</p>
+          </div>
+        </div>
+      );
+    }
+
     if (!vehicles?.length) {
       return (
         <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border-light bg-surface-light px-6 py-12 text-center">
@@ -260,6 +324,7 @@ export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, onD
                     <select
                       value={form.maker}
                       onChange={(e) => setForm({ ...form, maker: e.target.value, model: "" })}
+                      disabled={makersLoading}
                       className="h-12 rounded-lg border border-border-light bg-surface-light px-3 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
                     >
                       <option value="">선택</option>
@@ -282,7 +347,7 @@ export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, onD
                   <select
                     value={form.model}
                     onChange={(e) => setForm({ ...form, model: e.target.value })}
-                    disabled={!form.maker}
+                    disabled={!form.maker || makersLoading}
                     className="h-12 rounded-lg border border-border-light bg-surface-light px-3 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:bg-gray-100"
                   >
                     <option value="">선택</option>
@@ -313,6 +378,8 @@ export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, onD
                     ))}
                   </select>
                 </label>
+
+                {makersLoading ? <p className="text-sm text-subtext-light">제조사 정보를 불러오는 중입니다...</p> : null}
 
                 <div className="grid grid-cols-2 gap-3">
                   <label className="flex flex-col gap-2">
@@ -354,10 +421,10 @@ export default function VehicleSelectScreen({ vehicles, onSelect, onCreated, onD
                   </button>
                   <button
                     type="submit"
-                    disabled={loading}
+                    disabled={submitting}
                     className="flex h-12 flex-1 items-center justify-center rounded-lg bg-primary text-base font-semibold text-white transition hover:bg-primary/90 disabled:bg-primary/50"
                   >
-                    {loading ? "등록 중..." : "등록"}
+                    {submitting ? "등록 중..." : "등록"}
                   </button>
                 </div>
               </form>

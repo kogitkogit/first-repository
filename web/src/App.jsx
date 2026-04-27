@@ -91,6 +91,9 @@ export default function App() {
   const [userId, setUserId] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [vehicles, setVehicles] = useState([]);
+  const [vehiclesLoading, setVehiclesLoading] = useState(false);
+  const [vehiclesLoaded, setVehiclesLoaded] = useState(false);
+  const [vehiclesError, setVehiclesError] = useState("");
   const [selectedVehicle, setSelectedVehicle] = useState(null);
   const [legalSummary, setLegalSummary] = useState(mapLegalSummary(null));
   const [costRefreshKey, setCostRefreshKey] = useState(0);
@@ -116,29 +119,16 @@ export default function App() {
     setAuthReady(true);
   }, []);
 
-  const loadLegalSummary = useCallback(
-    async (vehicleId) => {
-      if (!token || !vehicleId) {
-        setLegalSummary(mapLegalSummary(null));
-        return;
-      }
-      try {
-        const res = await api.get("/legal/summary", { params: { vehicleId } });
-        setLegalSummary(mapLegalSummary(res.data));
-      } catch (error) {
-        console.error("법적 일정을 불러오지 못했습니다.", error);
-        setLegalSummary(mapLegalSummary(null));
-      }
-    },
-    [token],
-  );
-
   const fetchVehicles = useCallback(
     async (targetVehicleId) => {
+      setVehiclesLoading(true);
+      setVehiclesError("");
       try {
-        const response = await api.get("/vehicles/list");
-        const list = Array.isArray(response.data) ? response.data : [];
+        const response = await api.get("/vehicles/bootstrap", { params: targetVehicleId ? { vehicleId: targetVehicleId } : {} });
+        const list = Array.isArray(response.data?.vehicles) ? response.data.vehicles : [];
         setVehicles(list);
+        setVehiclesLoaded(true);
+        setLegalSummary(mapLegalSummary(response.data?.legalSummary ?? null));
 
         setSelectedVehicle((prev) => {
           if (targetVehicleId) {
@@ -160,8 +150,13 @@ export default function App() {
 
         return list;
       } catch (error) {
+        setVehiclesLoaded(true);
+        setVehiclesError("차량 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
+        setLegalSummary(mapLegalSummary(null));
         console.error("차량 목록을 불러오지 못했습니다.", error);
         throw error;
+      } finally {
+        setVehiclesLoading(false);
       }
     },
     [],
@@ -172,16 +167,11 @@ export default function App() {
       const targetId = vehicleId ?? selectedVehicle?.id;
       try {
         await fetchVehicles(targetId);
-        if (targetId) {
-          loadLegalSummary(targetId);
-        } else {
-          setLegalSummary(mapLegalSummary(null));
-        }
       } catch (_) {
         // 이미 콘솔에 기록됨
       }
     },
-    [fetchVehicles, selectedVehicle?.id, loadLegalSummary],
+    [fetchVehicles, selectedVehicle?.id],
   );
 
   const handleLoginSuccess = (t, u, id, nextAccountType = "registered", guestResumeToken = null) => {
@@ -199,7 +189,6 @@ export default function App() {
       }
     }
     navigate("/");
-    fetchVehicles().catch(() => {});
   };
 
   const handleLogout = () => {
@@ -209,6 +198,9 @@ export default function App() {
     setUserId(null);
     setSelectedVehicle(null);
     setVehicles([]);
+    setVehiclesLoading(false);
+    setVehiclesLoaded(false);
+    setVehiclesError("");
     setLegalSummary(mapLegalSummary(null));
     if (typeof window !== "undefined") {
       localStorage.removeItem("access_token");
@@ -261,10 +253,6 @@ export default function App() {
   }, [token, fetchVehicles]);
 
   useEffect(() => {
-    loadLegalSummary(selectedVehicle?.id || null);
-  }, [loadLegalSummary, selectedVehicle?.id]);
-
-  useEffect(() => {
     if (!isAdMobSupported()) return undefined;
     return subscribeBannerInset((nextInset) => {
       setBannerInset(nextInset);
@@ -286,6 +274,9 @@ export default function App() {
   return (
     <AppShell
       vehicles={vehicles}
+      vehiclesLoading={vehiclesLoading}
+      vehiclesLoaded={vehiclesLoaded}
+      vehiclesError={vehiclesError}
       selectedVehicle={selectedVehicle}
       setSelectedVehicle={setSelectedVehicle}
       fetchVehicles={fetchVehicles}
@@ -302,7 +293,24 @@ export default function App() {
   );
 }
 
-function AppShell({ selectedVehicle, setSelectedVehicle, vehicles, fetchVehicles, refreshVehicle, userId, username, accountType, legalSummary, onLogout, costRefreshKey, onCostRefresh, bannerInset = 0 }) {
+function AppShell({
+  selectedVehicle,
+  setSelectedVehicle,
+  vehicles,
+  vehiclesLoading,
+  vehiclesLoaded,
+  vehiclesError,
+  fetchVehicles,
+  refreshVehicle,
+  userId,
+  username,
+  accountType,
+  legalSummary,
+  onLogout,
+  costRefreshKey,
+  onCostRefresh,
+  bannerInset = 0,
+}) {
   const navigate = useNavigate();
   const location = useLocation();
   const isDashboard = location.pathname === "/";
@@ -395,6 +403,10 @@ function AppShell({ selectedVehicle, setSelectedVehicle, vehicles, fetchVehicles
           <div className="h-full px-4 py-6">
             <VehicleSelectScreen
               vehicles={vehicles}
+              loading={vehiclesLoading}
+              loaded={vehiclesLoaded}
+              error={vehiclesError}
+              onRetry={() => fetchVehicles().catch(() => {})}
               onSelect={(v) => {
                 setSelectedVehicle(v);
                 refreshVehicle(v.id);

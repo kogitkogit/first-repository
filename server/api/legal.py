@@ -77,10 +77,7 @@ def _latest(records, key):
     return max(valid, key=lambda record: getattr(record, key))
 
 
-@router.get("/summary", response_model=LegalSummaryResponse)
-def legal_summary(vehicleId: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    ensure_vehicle(vehicleId, current_user, db)
-    records = db.query(LegalInfo).filter(LegalInfo.vehicle_id == vehicleId, LegalInfo.user_id == current_user.id).all()
+def build_legal_summary_response(records):
     if not records:
         return LegalSummaryResponse()
 
@@ -121,3 +118,10 @@ def legal_summary(vehicleId: int, db: Session = Depends(get_db), current_user: U
     )
 
     return LegalSummaryResponse(insurance=insurance, inspection=inspection, tax=tax)
+
+
+@router.get("/summary", response_model=LegalSummaryResponse)
+def legal_summary(vehicleId: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    ensure_vehicle(vehicleId, current_user, db)
+    records = db.query(LegalInfo).filter(LegalInfo.vehicle_id == vehicleId, LegalInfo.user_id == current_user.id).all()
+    return build_legal_summary_response(records)

@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "dev_secret"
     JWT_ALG: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    APP_REGION_HINT: str = ""
+    DB_TIMING_LOG_ENABLED: bool = False
     ALLOWED_ORIGINS: str = ",".join(
         [
             "http://localhost",
