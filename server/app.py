@@ -57,6 +57,11 @@ def health_check():
     return {"ok": True}
 
 
+@app.get("/api/ping")
+def ping():
+    return {"ok": True, "service": "awake"}
+
+
 @app.get("/privacy-policy", response_class=HTMLResponse, include_in_schema=False)
 def privacy_policy_page():
     return load_privacy_policy_html()

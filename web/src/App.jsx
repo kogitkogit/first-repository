@@ -27,6 +27,8 @@ const BOTTOM_ROUTES = [
   { key: "costs", label: "비용 관리", icon: "receipt_long", path: "/costs" },
   { key: "settings", label: "설정", icon: "settings", path: "/settings" },
 ];
+const BOTTOM_NAV_HEIGHT = 80;
+const BANNER_GAP = 8;
 const ROUTE_TITLES = {
   "/": "차량 대시보드",
   "/setup-guide": "초기 설정 가이드",
@@ -295,11 +297,12 @@ export default function App() {
       onLogout={handleLogout}
       costRefreshKey={costRefreshKey}
       onCostRefresh={triggerCostRefresh}
+      bannerInset={bannerInset}
     />
   );
 }
 
-function AppShell({ selectedVehicle, setSelectedVehicle, vehicles, fetchVehicles, refreshVehicle, userId, username, accountType, legalSummary, onLogout, costRefreshKey, onCostRefresh }) {
+function AppShell({ selectedVehicle, setSelectedVehicle, vehicles, fetchVehicles, refreshVehicle, userId, username, accountType, legalSummary, onLogout, costRefreshKey, onCostRefresh, bannerInset = 0 }) {
   const navigate = useNavigate();
   const location = useLocation();
   const isDashboard = location.pathname === "/";
@@ -325,9 +328,17 @@ function AppShell({ selectedVehicle, setSelectedVehicle, vehicles, fetchVehicles
     }
   }, [selectedVehicle, location.pathname, navigate]);
 
+  const bottomInset = selectedVehicle ? bannerInset + (bannerInset > 0 ? BANNER_GAP : 0) : 0;
+
   return (
     <div className="relative flex min-h-screen flex-col bg-background-light text-text-light">
-      <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-border-light bg-background-light/95 px-4 backdrop-blur">
+      <header
+        className="sticky top-0 z-20 flex items-center justify-between border-b border-border-light bg-background-light/95 px-4 backdrop-blur"
+        style={{
+          paddingTop: "env(safe-area-inset-top, 0px)",
+          minHeight: "calc(56px + env(safe-area-inset-top, 0px))",
+        }}
+      >
         <div className="flex items-center">
           {showBackButton ? (
             <button
@@ -378,7 +389,7 @@ function AppShell({ selectedVehicle, setSelectedVehicle, vehicles, fetchVehicles
       </header>
       <main
         className="flex-1 overflow-x-hidden"
-        style={{ paddingBottom: `${selectedVehicle ? 96 + bannerInset : 96}px` }}
+        style={{ paddingBottom: `${selectedVehicle ? BOTTOM_NAV_HEIGHT + 16 + bottomInset : BOTTOM_NAV_HEIGHT + 16}px` }}
       >
         {!selectedVehicle ? (
           <div className="h-full px-4 py-6">
@@ -559,7 +570,7 @@ function AppShell({ selectedVehicle, setSelectedVehicle, vehicles, fetchVehicles
           </Routes>
         )}
       </main>
-      {selectedVehicle && <BottomNavigation currentPath={location.pathname} navigateTo={navigate} bottomOffset={bannerInset} />}
+      {selectedVehicle && <BottomNavigation currentPath={location.pathname} navigateTo={navigate} bottomOffset={bottomInset} />}
     </div>
   );
 }
@@ -575,8 +586,12 @@ function getHeaderTitle(pathname, vehicle) {
 function BottomNavigation({ currentPath, navigateTo, bottomOffset = 0 }) {
   return (
     <nav
-      className="fixed left-0 right-0 z-30 flex h-20 items-center justify-between border-t border-border-light bg-surface-light/95 px-6 backdrop-blur"
-      style={{ bottom: `${bottomOffset}px` }}
+      className="fixed left-0 right-0 z-30 flex items-center justify-between border-t border-border-light bg-surface-light/95 px-6 backdrop-blur"
+      style={{
+        bottom: `${bottomOffset}px`,
+        minHeight: "calc(80px + env(safe-area-inset-bottom, 0px))",
+        paddingBottom: "env(safe-area-inset-bottom, 0px)",
+      }}
     >
       {BOTTOM_ROUTES.map((item) => {
         const isActive = currentPath === item.path || (item.path !== "/" && currentPath.startsWith(item.path));

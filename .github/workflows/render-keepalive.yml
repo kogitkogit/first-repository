@@ -9,23 +9,34 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping health endpoint
+      - name: Ping render service
         run: |
           set -e
+          PING_URL="https://carcare-project.onrender.com/api/ping"
           HEALTH_URL="https://carcare-project.onrender.com/api/health"
           FALLBACK_URL="https://carcare-project.onrender.com/docs"
 
-          # 1) Prefer real health check (includes DB reachability).
+          # 1) Wake the app with a lightweight endpoint first.
           if curl --fail --silent --show-error \
-            --retry 4 --retry-all-errors --retry-delay 5 \
-            --connect-timeout 20 --max-time 120 \
+            --retry 4 --retry-all-errors --retry-delay 3 \
+            --connect-timeout 15 --max-time 45 \
+            "$PING_URL"; then
+            echo "Ping succeeded."
+            exit 0
+          fi
+
+          # 2) If ping fails, try full health check.
+          echo "Ping failed, trying health check..."
+          if curl --fail --silent --show-error \
+            --retry 3 --retry-all-errors --retry-delay 5 \
+            --connect-timeout 20 --max-time 90 \
             "$HEALTH_URL"; then
             echo "Health check succeeded."
             exit 0
           fi
 
-          # 2) Fallback to docs ping so keepalive still prevents sleeping.
-          echo "Health check timed out/failed, falling back to docs ping..."
+          # 3) Fallback to docs ping so keepalive still prevents sleeping.
+          echo "Health check failed, falling back to docs ping..."
           curl --fail --silent --show-error \
             --retry 2 --retry-all-errors --retry-delay 3 \
             --connect-timeout 20 --max-time 60 \
