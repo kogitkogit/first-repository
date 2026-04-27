@@ -1,10 +1,13 @@
 import { Capacitor } from "@capacitor/core";
-import { AdMob, BannerAdPosition, BannerAdSize, MaxAdContentRating } from "@capacitor-community/admob";
+import { AdMob, BannerAdPluginEvents, BannerAdPosition, BannerAdSize, MaxAdContentRating } from "@capacitor-community/admob";
 import { getAdMobPlatformConfig, isUsingTestAds } from "../config/admob";
 
 let initPromise = null;
 let bannerVisible = false;
 let lastConsentInfo = null;
+let bannerSizeListener = null;
+let bannerInset = 0;
+const bannerInsetSubscribers = new Set();
 
 function getPlatform() {
   return Capacitor.getPlatform();
@@ -24,10 +27,43 @@ function parseTestDeviceIds() {
     .filter(Boolean);
 }
 
+function notifyBannerInset(nextInset) {
+  bannerInset = nextInset;
+  bannerInsetSubscribers.forEach((listener) => {
+    try {
+      listener(bannerInset);
+    } catch (error) {
+      console.error("배너 높이 구독자 처리 실패", error);
+    }
+  });
+}
+
+function ensureBannerSizeListener() {
+  if (bannerSizeListener || !isAdMobSupported()) return;
+  bannerSizeListener = AdMob.addListener(BannerAdPluginEvents.SizeChanged, (info) => {
+    const height = Number(info?.height || 0);
+    notifyBannerInset(height > 0 ? height : 0);
+  });
+}
+
+export function subscribeBannerInset(listener) {
+  bannerInsetSubscribers.add(listener);
+  listener(bannerInset);
+  return () => {
+    bannerInsetSubscribers.delete(listener);
+  };
+}
+
+export function getBannerInset() {
+  return bannerInset;
+}
+
 export async function initializeAdMob() {
   if (!isAdMobSupported()) {
     return { enabled: false, canRequestAds: false, consentInfo: null };
   }
+
+  ensureBannerSizeListener();
 
   if (!initPromise) {
     initPromise = (async () => {
@@ -81,7 +117,7 @@ export async function showDashboardBanner() {
     adId: config.bannerId,
     adSize: BannerAdSize.ADAPTIVE_BANNER,
     position: BannerAdPosition.BOTTOM_CENTER,
-    margin: 92,
+    margin: 0,
     isTesting: isUsingTestAds(platform),
   });
 
@@ -93,6 +129,7 @@ export async function hideDashboardBanner() {
   if (!isAdMobSupported() || !bannerVisible) return;
   await AdMob.removeBanner();
   bannerVisible = false;
+  notifyBannerInset(0);
 }
 
 export function getCachedConsentInfo() {

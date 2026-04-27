@@ -18,6 +18,7 @@ import CostManagementPanel from "./components/CostManagementPanel";
 import SettingsPanel from "./components/SettingsPanel";
 import TasksPanel from "./components/TasksPanel";
 import InitialSetupGuide from "./components/InitialSetupGuide";
+import { getBannerInset, isAdMobSupported, subscribeBannerInset } from "./services/admob";
 
 const BOTTOM_ROUTES = [
   { key: "home", label: "홈", icon: "home", path: "/" },
@@ -91,6 +92,7 @@ export default function App() {
   const [selectedVehicle, setSelectedVehicle] = useState(null);
   const [legalSummary, setLegalSummary] = useState(mapLegalSummary(null));
   const [costRefreshKey, setCostRefreshKey] = useState(0);
+  const [bannerInset, setBannerInset] = useState(() => (isAdMobSupported() ? getBannerInset() : 0));
 
   const triggerCostRefresh = useCallback(() => {
     setCostRefreshKey((prev) => prev + 1);
@@ -260,6 +262,13 @@ export default function App() {
     loadLegalSummary(selectedVehicle?.id || null);
   }, [loadLegalSummary, selectedVehicle?.id]);
 
+  useEffect(() => {
+    if (!isAdMobSupported()) return undefined;
+    return subscribeBannerInset((nextInset) => {
+      setBannerInset(nextInset);
+    });
+  }, []);
+
   if (!authReady) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background-light text-text-light">
@@ -367,7 +376,10 @@ function AppShell({ selectedVehicle, setSelectedVehicle, vehicles, fetchVehicles
           </button>
         </div>
       </header>
-      <main className="flex-1 overflow-x-hidden pb-24">
+      <main
+        className="flex-1 overflow-x-hidden"
+        style={{ paddingBottom: `${selectedVehicle ? 96 + bannerInset : 96}px` }}
+      >
         {!selectedVehicle ? (
           <div className="h-full px-4 py-6">
             <VehicleSelectScreen
@@ -547,7 +559,7 @@ function AppShell({ selectedVehicle, setSelectedVehicle, vehicles, fetchVehicles
           </Routes>
         )}
       </main>
-      {selectedVehicle && <BottomNavigation currentPath={location.pathname} navigateTo={navigate} />}
+      {selectedVehicle && <BottomNavigation currentPath={location.pathname} navigateTo={navigate} bottomOffset={bannerInset} />}
     </div>
   );
 }
@@ -560,9 +572,12 @@ function getHeaderTitle(pathname, vehicle) {
   return ROUTE_TITLES[pathname] || "차량 관리";
 }
 
-function BottomNavigation({ currentPath, navigateTo }) {
+function BottomNavigation({ currentPath, navigateTo, bottomOffset = 0 }) {
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-30 flex h-20 items-center justify-between px-6 border-t border-border-light bg-surface-light/95 backdrop-blur">
+    <nav
+      className="fixed left-0 right-0 z-30 flex h-20 items-center justify-between border-t border-border-light bg-surface-light/95 px-6 backdrop-blur"
+      style={{ bottom: `${bottomOffset}px` }}
+    >
       {BOTTOM_ROUTES.map((item) => {
         const isActive = currentPath === item.path || (item.path !== "/" && currentPath.startsWith(item.path));
         const baseColor = isActive ? "text-primary" : "text-subtext-light";
