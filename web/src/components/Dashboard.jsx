@@ -21,6 +21,9 @@ const menu = [
 ];
 
 const DUE_TONE_PRIORITY = { danger: 0, warn: 1, ok: 2, muted: 3 };
+const DASHBOARD_CACHE_TTL = 60 * 1000;
+const dashboardSnapshotCache = new Map();
+const dashboardDueCache = new Map();
 const FUEL_TYPE_LABEL = {
   gasoline: "휘발유",
   diesel: "경유",
@@ -54,35 +57,57 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
 
   const navigate = useNavigate();
   const location = useLocation();
+  const snapshotCacheKey = `${vehicle?.id ?? "none"}:${costRefreshKey}`;
+
+  useEffect(() => {
+    if (!vehicle?.id) return;
+    const cached = dashboardSnapshotCache.get(snapshotCacheKey);
+    if (!cached) return;
+    if (Date.now() - cached.timestamp > DASHBOARD_CACHE_TTL) return;
+    setStats(cached.stats);
+    setChargeStats(cached.chargeStats);
+    setExpenseMonthly(cached.expenseMonthly);
+    setCurrentOdo(cached.currentOdo);
+    setOdoReady(true);
+  }, [snapshotCacheKey, vehicle?.id]);
 
   useEffect(() => {
     if (!vehicle) return;
-    setOdoReady(false);
+    const cached = dashboardSnapshotCache.get(snapshotCacheKey);
+    const hasFreshCache = cached && Date.now() - cached.timestamp <= DASHBOARD_CACHE_TTL;
+    if (!hasFreshCache) {
+      setOdoReady(false);
+    }
 
-    api
-      .get("/fuel/stats", { params: { vehicleId: vehicle.id } })
-      .then((r) => setStats(r.data))
-      .catch(() => {
-        setStats({ avg_km_per_l: null, total_cost: null, avg_cost_per_l: null });
-      });
+    let cancelled = false;
 
-    api
-      .get("/charging/stats", { params: { vehicleId: vehicle.id } })
-      .then((r) => setChargeStats(r.data))
-      .catch(() => {
-        setChargeStats({ avg_km_per_kwh: null, total_cost: null, total_kwh: null, avg_cost_per_kwh: null });
+    Promise.allSettled([
+      api.get("/fuel/stats", { params: { vehicleId: vehicle.id } }),
+      api.get("/charging/stats", { params: { vehicleId: vehicle.id } }),
+      api.get("/odometer/current", { params: { vehicleId: vehicle.id } }),
+    ]).then((results) => {
+      if (cancelled) return;
+      const nextStats = results[0].status === "fulfilled" ? results[0].value.data : { avg_km_per_l: null, total_cost: null, avg_cost_per_l: null };
+      const nextChargeStats =
+        results[1].status === "fulfilled" ? results[1].value.data : { avg_km_per_kwh: null, total_cost: null, total_kwh: null, avg_cost_per_kwh: null };
+      const nextOdo = results[2].status === "fulfilled" ? results[2].value.data?.odo_km : null;
+      setStats(nextStats);
+      setChargeStats(nextChargeStats);
+      setCurrentOdo(nextOdo);
+      setOdoReady(true);
+      dashboardSnapshotCache.set(snapshotCacheKey, {
+        timestamp: Date.now(),
+        stats: nextStats,
+        chargeStats: nextChargeStats,
+        currentOdo: nextOdo,
+        expenseMonthly: hasFreshCache ? cached.expenseMonthly : expenseMonthly,
       });
+    });
 
-    api
-      .get("/odometer/current", { params: { vehicleId: vehicle.id } })
-      .then((r) => setCurrentOdo(r.data?.odo_km))
-      .catch(() => {
-        setCurrentOdo(null);
-      })
-      .finally(() => {
-        setOdoReady(true);
-      });
-  }, [vehicle?.id, costRefreshKey]);
+    return () => {
+      cancelled = true;
+    };
+  }, [vehicle?.id, costRefreshKey, snapshotCacheKey]);
 
   useEffect(() => {
     if (!vehicle?.id) {
@@ -98,6 +123,14 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
       .slice(0, 10);
     let cancelled = false;
 
+    const cached = dashboardSnapshotCache.get(snapshotCacheKey);
+    if (cached && Date.now() - cached.timestamp <= DASHBOARD_CACHE_TTL) {
+      setExpenseMonthly(cached.expenseMonthly);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     const loadMonthlyCost = async () => {
       try {
         const snapshot = await fetchCostSnapshot({
@@ -107,6 +140,15 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
         });
         if (!cancelled) {
           setExpenseMonthly(snapshot.overallTotal);
+          const previous = dashboardSnapshotCache.get(snapshotCacheKey) || {};
+          dashboardSnapshotCache.set(snapshotCacheKey, {
+            ...previous,
+            timestamp: Date.now(),
+            expenseMonthly: snapshot.overallTotal,
+            stats: previous.stats ?? stats,
+            chargeStats: previous.chargeStats ?? chargeStats,
+            currentOdo: previous.currentOdo ?? currentOdo,
+          });
         }
       } catch (error) {
         console.error("이번 달 비용 집계 실패", error);
@@ -120,19 +162,26 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
     return () => {
       cancelled = true;
     };
-  }, [vehicle?.id]);
+  }, [vehicle?.id, snapshotCacheKey]);
 
   const loadDueSummary = useCallback(async () => {
     if (!vehicle) {
       setDueSummary({ loading: false, items: [], error: null });
       return;
     }
-    setDueSummary((prev) => ({ ...prev, loading: true, error: null }));
     const baseMileage = Number.isFinite(Number(currentOdo))
       ? Number(currentOdo)
       : Number.isFinite(Number(vehicle?.odo_km))
       ? Number(vehicle?.odo_km)
       : null;
+    const dueCacheKey = `${vehicle.id}:${baseMileage ?? "none"}:${JSON.stringify(legalSummary ?? {})}`;
+    const cached = dashboardDueCache.get(dueCacheKey);
+    if (cached && Date.now() - cached.timestamp <= DASHBOARD_CACHE_TTL) {
+      setDueSummary({ loading: false, items: cached.items, error: null });
+      return;
+    }
+
+    setDueSummary((prev) => ({ ...prev, loading: true, error: null }));
     try {
       const [consumableDue, tireDue] = await Promise.all([
         summarizeConsumableDue(vehicle.id, baseMileage),
@@ -144,6 +193,7 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
         if (diff !== 0) return diff;
         return a.area.localeCompare(b.area, "ko-KR");
       });
+      dashboardDueCache.set(dueCacheKey, { timestamp: Date.now(), items });
       setDueSummary({ loading: false, items, error: null });
     } catch (error) {
         console.error("교체 알림 정보를 불러오지 못했습니다.", error);
@@ -362,7 +412,6 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
                     resetOdoForm();
                     return;
                   }
-                  setEditingOdoLogId(null);
                   setOdoEditing(true);
                   setOdoDate(new Date().toISOString().slice(0, 10));
                   setOdoKm(primaryOdo != null ? String(primaryOdo) : "");

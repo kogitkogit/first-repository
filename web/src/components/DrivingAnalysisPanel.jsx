@@ -4,6 +4,9 @@ import ConfirmDialog from "./ui/ConfirmDialog";
 import { useToast } from "./ui/ToastProvider";
 import { DATE_ERROR_MESSAGE, validatePastOrToday } from "../utils/dateValidation";
 
+const DRIVING_CACHE_TTL = 60 * 1000;
+const drivingAnalysisCache = new Map();
+
 function formatDistance(value) {
   return value != null ? `${Number(value).toLocaleString()} km` : "데이터 없음";
 }
@@ -31,6 +34,7 @@ export function useDrivingAnalysis(vehicle, apiClient = api) {
   const [overallRange, setOverallRange] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const cacheKey = `${vehicle?.id ?? "none"}:${distanceMode}:${rangeMode}:${selectedYear}:${selectedMonth}:${fromDate}:${toDate}`;
 
   const fetchDistance = useCallback(async () => {
     if (!vehicle?.id) {
@@ -50,6 +54,15 @@ export function useDrivingAnalysis(vehicle, apiClient = api) {
         setComparisonValue(null);
         return;
       }
+    }
+
+    const cached = drivingAnalysisCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp <= DRIVING_CACHE_TTL) {
+      setDistanceValue(cached.distanceValue);
+      setComparisonValue(cached.comparisonValue);
+      setOverallRange(cached.overallRange);
+      setError("");
+      return;
     }
 
     setLoading(true);
@@ -96,7 +109,21 @@ export function useDrivingAnalysis(vehicle, apiClient = api) {
       );
 
       const comparison = Number(comparisonResponse?.data?.distance);
-      setComparisonValue(Number.isFinite(comparison) ? comparison : null);
+      const nextComparison = Number.isFinite(comparison) ? comparison : null;
+      setComparisonValue(nextComparison);
+      drivingAnalysisCache.set(cacheKey, {
+        timestamp: Date.now(),
+        distanceValue: Number.isFinite(value) ? value : null,
+        comparisonValue: nextComparison,
+        overallRange:
+          distanceMode === "overall"
+            ? {
+                startDate: response?.data?.start_date || null,
+                endDate: response?.data?.end_date || null,
+                count: response?.data?.count || 0,
+              }
+            : null,
+      });
     } catch (fetchError) {
       console.error("주행거리 분석 데이터를 불러오지 못했습니다.", fetchError);
       setDistanceValue(null);
@@ -106,7 +133,7 @@ export function useDrivingAnalysis(vehicle, apiClient = api) {
     } finally {
       setLoading(false);
     }
-  }, [apiClient, distanceMode, fromDate, rangeMode, selectedMonth, selectedYear, toDate, vehicle?.id]);
+  }, [apiClient, cacheKey, distanceMode, fromDate, rangeMode, selectedMonth, selectedYear, toDate, vehicle?.id]);
 
   useEffect(() => {
     fetchDistance();
