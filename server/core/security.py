@@ -19,6 +19,8 @@ def hash_password(pw: str) -> str:
     return pwd_context.hash(pw)
 
 def verify_password(pw: str, hashed: str) -> bool:
+    if not hashed or not str(hashed).startswith("$2"):
+        return False
     return pwd_context.verify(pw, hashed)
 
 def create_token(sub: str, minutes: int = 60*24) -> str:

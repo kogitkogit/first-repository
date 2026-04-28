@@ -57,7 +57,7 @@ export default function LoginScreen({ onLoginSuccess }) {
     let cancelled = false;
     const prewarmServer = async () => {
       try {
-        await api.get("/health", { timeout: 12000 });
+        await api.get("/ping", { timeout: 4000 });
       } catch (error) {
         console.warn("서버 준비 확인 실패:", error);
       } finally {

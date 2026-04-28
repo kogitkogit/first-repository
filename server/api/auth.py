@@ -23,6 +23,7 @@ from models.legalinfo import LegalInfo, LegalNotification
 from schemas.auth import GuestResumeIn, LoginIn, RegisterIn, TokenOut
 
 router = APIRouter(tags=["auth"])
+GUEST_PASSWORD_SENTINEL = "!guest_account!"
 
 
 def account_type_for(user: User) -> str:
@@ -74,7 +75,7 @@ def register(body: RegisterIn, db: Session = Depends(get_db)):
 @router.post("/login", response_model=TokenOut)
 def login(body: LoginIn, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == body.username).first()
-    if not user or not verify_password(body.password, user.password_hash):
+    if not user or account_type_for(user) == "guest" or not verify_password(body.password, user.password_hash):
         raise HTTPException(401, "Invalid credentials")
     return build_token_response(user)
 
@@ -82,7 +83,7 @@ def login(body: LoginIn, db: Session = Depends(get_db)):
 @router.post("/guest", response_model=TokenOut)
 def guest_login(db: Session = Depends(get_db)):
     username = generate_guest_username(db)
-    user = User(username=username, password_hash=hash_password(secrets.token_urlsafe(24)))
+    user = User(username=username, password_hash=GUEST_PASSWORD_SENTINEL)
     db.add(user)
     db.commit()
     db.refresh(user)
