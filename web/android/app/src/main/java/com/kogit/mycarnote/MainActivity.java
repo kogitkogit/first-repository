@@ -1,4 +1,4 @@
-package com.carcare.app;
+package com.kogit.mycarnote;
 
 import com.getcapacitor.BridgeActivity;
 

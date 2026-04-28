@@ -183,7 +183,7 @@ rg -n "VITE_API_BASE_URL|api.yourdomain.com" dist -S
 
 `web/capacitor.config.json`
 
-- `appId`: 앱 고유 패키지명 (예: `com.carcare.app`)
+- `appId`: 앱 고유 패키지명 (예: `com.kogit.mycarnote`)
 - `appName`: 앱 표시 이름 (예: `내차수첩`)
 - `webDir`: `dist`
 

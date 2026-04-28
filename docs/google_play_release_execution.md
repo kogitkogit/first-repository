@@ -8,7 +8,7 @@
 
 ## 1. 현재 저장소 기준 확정값
 
-- 앱 ID: `com.carcare.app` (`web/capacitor.config.json`, `web/android/app/build.gradle`)
+- 앱 ID: `com.kogit.mycarnote` (`web/capacitor.config.json`, `web/android/app/build.gradle`)
 - 앱 이름: `내차수첩` (`web/capacitor.config.json`)
 - Android 버전코드: `1` (`web/android/app/build.gradle`)
 - Android 버전명: `1.0` (`web/android/app/build.gradle`)
@@ -188,7 +188,7 @@ gradlew.bat bundleRelease
 ### 8-1. 앱 등록
 
 - [ ] 앱 생성 (무료 앱, 기본 언어 설정)
-- [ ] 패키지명 `com.carcare.app` 확인
+- [ ] 패키지명 `com.kogit.mycarnote` 확인
 
 ### 8-2. 스토어 등록정보
 

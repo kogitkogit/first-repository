@@ -2,8 +2,8 @@
 <resources>
     <string name="app_name">내차수첩</string>
     <string name="title_activity_main">내차수첩</string>
-    <string name="package_name">com.carcare.app</string>
-    <string name="custom_url_scheme">com.carcare.app</string>
+    <string name="package_name">com.kogit.mycarnote</string>
+    <string name="custom_url_scheme">com.kogit.mycarnote</string>
     <string name="admob_app_id">ca-app-pub-7545166427116165~8135730259</string>
 </resources>
 

@@ -1,5 +1,5 @@
 ﻿{
-  "appId": "com.carcare.app",
+  "appId": "com.kogit.mycarnote",
   "appName": "내차수첩",
   "webDir": "dist",
   "bundledWebRuntime": false,
