@@ -383,11 +383,27 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-1.5">
                 <h2 className="text-xl font-bold text-text-light">{vehicleTitle}</h2>
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-sm text-subtext-light">{vehicleSubtitle}</p>
-                  <div className="inline-flex items-center gap-3 rounded-full border border-border-light bg-background-light/80 px-3 py-1 text-xs text-subtext-light">
+                <p className="text-sm text-subtext-light">{vehicleSubtitle}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="inline-flex shrink-0 items-center gap-3 rounded-full border border-border-light bg-background-light/80 px-3 py-1 text-xs text-subtext-light">
                     <span className="font-semibold text-text-light">{currentMileageLabel}</span>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (odoEditing) {
+                        resetOdoForm();
+                        return;
+                      }
+                      setOdoEditing(true);
+                      setOdoDate(new Date().toISOString().slice(0, 10));
+                      setOdoKm(primaryOdo != null ? String(primaryOdo) : "");
+                    }}
+                    className="flex h-9 shrink-0 items-center gap-2 rounded-full bg-primary px-3.5 text-xs font-semibold text-white transition hover:bg-primary/90"
+                  >
+                    <span className="material-symbols-outlined text-base">{odoEditing ? "close" : "speed"}</span>
+                    {odoEditing ? "입력 취소" : "주행거리 업데이트"}
+                  </button>
                 </div>
               </div>
               <div className="inline-flex max-w-full flex-nowrap items-center gap-2 whitespace-nowrap rounded-full bg-primary/5 px-3 py-1 text-[11px] font-semibold text-primary sm:text-xs">
@@ -405,23 +421,6 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (odoEditing) {
-                    resetOdoForm();
-                    return;
-                  }
-                  setOdoEditing(true);
-                  setOdoDate(new Date().toISOString().slice(0, 10));
-                  setOdoKm(primaryOdo != null ? String(primaryOdo) : "");
-                }}
-                className="flex h-9 shrink-0 items-center gap-2 rounded-full bg-primary px-4 text-xs font-semibold text-white transition hover:bg-primary/90"
-              >
-                <span className="material-symbols-outlined text-base">{odoEditing ? "close" : "speed"}</span>
-                {odoEditing ? "입력 취소" : "주행거리 업데이트"}
-              </button>
-
               {dueLoading ? (
                 <div className="flex h-9 w-full flex-nowrap items-center justify-center gap-2 overflow-hidden rounded-full border border-border-light bg-background-light px-4 text-[11px] font-semibold text-subtext-light sm:w-auto sm:px-8 sm:text-xs">
                   <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-subtext-light/25 border-t-subtext-light" />
