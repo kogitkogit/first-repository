@@ -60,6 +60,29 @@ def generate_guest_username(db: Session) -> str:
             return candidate
 
 
+def delete_user_account(db: Session, user: User) -> None:
+    user_id = user.id
+    vehicle_ids = [vehicle.id for vehicle in db.query(Vehicle.id).filter(Vehicle.user_id == user_id).all()]
+
+    db.query(Notification).filter(Notification.user_id == user_id).delete(synchronize_session=False)
+    db.query(MaintenanceRecord).filter(MaintenanceRecord.user_id == user_id).delete(synchronize_session=False)
+    db.query(Consumable).filter(Consumable.user_id == user_id).delete(synchronize_session=False)
+    db.query(ConsumableItem).filter(ConsumableItem.user_id == user_id).delete(synchronize_session=False)
+    db.query(TireMeasurement).filter(TireMeasurement.user_id == user_id).delete(synchronize_session=False)
+    db.query(TireServiceRecord).filter(TireServiceRecord.user_id == user_id).delete(synchronize_session=False)
+    db.query(VehicleTire).filter(VehicleTire.user_id == user_id).delete(synchronize_session=False)
+    db.query(LegalNotification).filter(LegalNotification.user_id == user_id).delete(synchronize_session=False)
+    db.query(LegalInfo).filter(LegalInfo.user_id == user_id).delete(synchronize_session=False)
+    if vehicle_ids:
+        db.query(FuelRecord).filter(FuelRecord.vehicle_id.in_(vehicle_ids)).delete(synchronize_session=False)
+        db.query(ChargingRecord).filter(ChargingRecord.vehicle_id.in_(vehicle_ids)).delete(synchronize_session=False)
+        db.query(Expense).filter(Expense.vehicle_id.in_(vehicle_ids)).delete(synchronize_session=False)
+        db.query(VehicleOdometerLog).filter(VehicleOdometerLog.vehicle_id.in_(vehicle_ids)).delete(synchronize_session=False)
+        db.query(Vehicle).filter(Vehicle.id.in_(vehicle_ids)).delete(synchronize_session=False)
+    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+    db.commit()
+
+
 @router.post("/register", response_model=TokenOut)
 def register(body: RegisterIn, db: Session = Depends(get_db)):
     if db.query(User).filter(User.username == body.username).first():
@@ -113,24 +136,5 @@ def resume_guest(body: GuestResumeIn, db: Session = Depends(get_db)):
 
 @router.delete("/me")
 def delete_me(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    user_id = current_user.id
-    vehicle_ids = [vehicle.id for vehicle in db.query(Vehicle.id).filter(Vehicle.user_id == user_id).all()]
-
-    db.query(Notification).filter(Notification.user_id == user_id).delete(synchronize_session=False)
-    db.query(MaintenanceRecord).filter(MaintenanceRecord.user_id == user_id).delete(synchronize_session=False)
-    db.query(Consumable).filter(Consumable.user_id == user_id).delete(synchronize_session=False)
-    db.query(ConsumableItem).filter(ConsumableItem.user_id == user_id).delete(synchronize_session=False)
-    db.query(TireMeasurement).filter(TireMeasurement.user_id == user_id).delete(synchronize_session=False)
-    db.query(TireServiceRecord).filter(TireServiceRecord.user_id == user_id).delete(synchronize_session=False)
-    db.query(VehicleTire).filter(VehicleTire.user_id == user_id).delete(synchronize_session=False)
-    db.query(LegalNotification).filter(LegalNotification.user_id == user_id).delete(synchronize_session=False)
-    db.query(LegalInfo).filter(LegalInfo.user_id == user_id).delete(synchronize_session=False)
-    if vehicle_ids:
-        db.query(FuelRecord).filter(FuelRecord.vehicle_id.in_(vehicle_ids)).delete(synchronize_session=False)
-        db.query(ChargingRecord).filter(ChargingRecord.vehicle_id.in_(vehicle_ids)).delete(synchronize_session=False)
-        db.query(Expense).filter(Expense.vehicle_id.in_(vehicle_ids)).delete(synchronize_session=False)
-        db.query(VehicleOdometerLog).filter(VehicleOdometerLog.vehicle_id.in_(vehicle_ids)).delete(synchronize_session=False)
-        db.query(Vehicle).filter(Vehicle.id.in_(vehicle_ids)).delete(synchronize_session=False)
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
+    delete_user_account(db, current_user)
     return {"ok": True}
