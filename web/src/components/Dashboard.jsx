@@ -326,6 +326,8 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
 
   const dueLoading = dueSummary.loading || !odoReady;
   const dueCount = dueSummary.items.filter((item) => item.tone === "danger" || item.tone === "warn").length;
+  const dueIndicatorLoading = dueLoading && dueSummary.items.length === 0;
+  const dueHasActionItems = dueCount > 0;
 
   const handleMetricClick = (metricKey) => {
     if (metricKey === "expense") {
@@ -407,28 +409,28 @@ export default function Dashboard({ vehicle, onVehicleRefresh, costRefreshKey = 
                 </div>
               </div>
               <div className="inline-flex max-w-full flex-nowrap items-center gap-2 whitespace-nowrap rounded-full bg-primary/5 px-3 py-1 text-[11px] font-semibold text-primary sm:text-xs">
-                {dueLoading ? (
+                {dueIndicatorLoading ? (
                   <>
                     <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-primary/25 border-t-primary" />
                     <span>불러오는 중</span>
                   </>
                 ) : (
                   <>
-                    <span className={`h-2 w-2 rounded-full ${dueCount > 0 ? "bg-amber-500" : "bg-emerald-500"}`} />
-                    <span>{dueCount > 0 ? "점검 필요" : "정상 상태"}</span>
+                    <span className={`h-2 w-2 rounded-full ${dueHasActionItems ? "bg-amber-500" : "bg-emerald-500"}`} />
+                    <span>{dueHasActionItems ? "점검 필요" : "정상 상태"}</span>
                   </>
                 )}
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {dueLoading ? (
+              {dueIndicatorLoading ? (
                 <div className="flex h-9 w-full flex-nowrap items-center justify-center gap-2 overflow-hidden rounded-full border border-border-light bg-background-light px-4 text-[11px] font-semibold text-subtext-light sm:w-auto sm:px-8 sm:text-xs">
                   <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-subtext-light/25 border-t-subtext-light" />
                   <span className="whitespace-nowrap">데이터 불러오는 중...</span>
                 </div>
               ) : null}
 
-              {!dueLoading && !dueSummary.error && dueCount > 0 && (
+              {!dueIndicatorLoading && !dueSummary.error && dueHasActionItems && (
                 <button
                   type="button"
                   onClick={() => setDueModalOpen(true)}

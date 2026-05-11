@@ -19,6 +19,7 @@ import SettingsPanel from "./components/SettingsPanel";
 import TasksPanel from "./components/TasksPanel";
 import InitialSetupGuide from "./components/InitialSetupGuide";
 import { getBannerInset, isAdMobSupported, subscribeBannerInset } from "./services/admob";
+import { runWithSingleRetry } from "./utils/networkRetry";
 
 const BOTTOM_ROUTES = [
   { key: "home", label: "홈", icon: "home", path: "/" },
@@ -124,7 +125,18 @@ export default function App() {
       setVehiclesLoading(true);
       setVehiclesError("");
       try {
-        const response = await api.get("/vehicles/bootstrap", { params: targetVehicleId ? { vehicleId: targetVehicleId } : {} });
+        const response = await runWithSingleRetry(
+          () => api.get("/vehicles/bootstrap", { params: targetVehicleId ? { vehicleId: targetVehicleId } : {} }),
+          {
+            beforeRetry: async () => {
+              try {
+                await api.get("/ping", { timeout: 4000 });
+              } catch (_) {
+                // ping 실패 시에도 bootstrap 재시도는 진행한다.
+              }
+            },
+          },
+        );
         const list = Array.isArray(response.data?.vehicles) ? response.data.vehicles : [];
         setVehicles(list);
         setVehiclesLoaded(true);
@@ -151,7 +163,7 @@ export default function App() {
         return list;
       } catch (error) {
         setVehiclesLoaded(true);
-        setVehiclesError("차량 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
+        setVehiclesError("차량 목록을 불러오지 못했습니다. 서버 연결을 확인한 뒤 다시 시도해주세요.");
         setLegalSummary(mapLegalSummary(null));
         console.error("차량 목록을 불러오지 못했습니다.", error);
         throw error;

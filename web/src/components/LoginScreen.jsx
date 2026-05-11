@@ -4,25 +4,26 @@ import api from "../api/client";
 import { useToast } from "./ui/ToastProvider";
 import DocumentModal from "./ui/DocumentModal";
 import { APP_NAME, POLICY_DOCUMENTS } from "../content/policyDocuments";
+import { isRetryableRequestError, runWithSingleRetry } from "../utils/networkRetry";
 
 const AGREEMENT_STORAGE_KEY = "naechasutcheop_terms_agreed_v1";
 
 const AGREEMENT_SUMMARY = [
   {
-    title: "어떤 정보를 다루나요?",
-    body: "차량 번호, 주행거리, 정비 이력, 주유·충전 기록, 타이어 관리 기록 등 차량 관리에 필요한 정보를 다룹니다.",
+    title: "어떤 정보를 사용하나요?",
+    body: "차량 번호, 주행거리, 정비 이력, 주유·충전 기록, 타이어 관리 기록 등 차량 관리에 필요한 정보를 저장합니다.",
   },
   {
-    title: "왜 정보를 사용하나요?",
-    body: "입력한 정보를 바탕으로 차량 관리 기능 제공, 대시보드 집계, 비용 계산, 계정별 데이터 보관에 사용합니다.",
+    title: "입력한 정보는 어디에 쓰이나요?",
+    body: "차량 관리 기능 제공, 대시보드 집계, 비용 계산, 계정별 데이터 보관과 복구에 사용됩니다.",
   },
   {
-    title: "비회원 시작은 어떻게 되나요?",
-    body: "같은 기기에서는 자동으로 이어서 사용할 수 있지만, 앱 삭제나 기기 변경 시 데이터 복구가 어려울 수 있습니다.",
+    title: "비회원 시작은 어떻게 동작하나요?",
+    body: "같은 기기에서는 이어서 사용할 수 있지만, 앱 삭제나 기기 변경 시 데이터 복구가 어려울 수 있습니다.",
   },
   {
-    title: "광고는 어떻게 처리되나요?",
-    body: "광고가 적용되는 경우 Google AdMob이 광고 제공과 진단을 위해 필요한 정보를 처리할 수 있습니다.",
+    title: "광고는 어떻게 처리하나요?",
+    body: "광고가 표시되는 경우 Google AdMob이 광고 제공과 진단을 위해 필요한 정보를 처리할 수 있습니다.",
   },
 ];
 
@@ -61,7 +62,9 @@ export default function LoginScreen({ onLoginSuccess }) {
       } catch (error) {
         console.warn("서버 준비 확인 실패:", error);
       } finally {
-        if (!cancelled) setServerWarming(false);
+        if (!cancelled) {
+          setServerWarming(false);
+        }
       }
     };
     prewarmServer();
@@ -73,9 +76,17 @@ export default function LoginScreen({ onLoginSuccess }) {
   const canGuestStart = useMemo(() => agreed, [agreed]);
   const activeDocument = activeDoc ? POLICY_DOCUMENTS[activeDoc] : null;
 
+  const warmServer = async () => {
+    try {
+      await api.get("/ping", { timeout: 4000 });
+    } catch (_) {
+      // ping 실패 시에도 본 요청은 한 번 더 진행한다.
+    }
+  };
+
   const handleConsentContinue = () => {
     if (!agreed) {
-      showToast({ tone: "warning", message: "필수 이용 내용에 동의해주세요.", placement: "center", duration: 1800 });
+      showToast({ tone: "warning", message: "필수 이용 안내에 동의해주세요.", placement: "center", duration: 1800 });
       return;
     }
     localStorage.setItem(AGREEMENT_STORAGE_KEY, "1");
@@ -93,12 +104,27 @@ export default function LoginScreen({ onLoginSuccess }) {
     }
     try {
       setLoading(true);
-      const res = await api.post("/auth/login", { username, password });
+      const res = await runWithSingleRetry(
+        () => api.post("/auth/login", { username, password }),
+        {
+          beforeRetry: async () => {
+            await warmServer();
+            showToast({
+              tone: "info",
+              message: "서버 연결이 지연되어 한 번 더 시도합니다.",
+              placement: "center",
+              duration: 1500,
+            });
+          },
+        },
+      );
       const { access_token, user_id, username: accountName, account_type } = res.data;
       onLoginSuccess(access_token, accountName, user_id, account_type || "registered");
     } catch (err) {
       console.error("로그인 오류:", err);
-      const message = err?.code === "ECONNABORTED" ? "서버를 준비하는 중입니다. 잠시 후 다시 시도해주세요." : "로그인에 실패했습니다. 계정 정보를 확인해주세요.";
+      const message = isRetryableRequestError(err)
+        ? "서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요."
+        : "로그인에 실패했습니다. 계정 정보를 확인해주세요.";
       showToast({ tone: "error", message });
     } finally {
       setLoading(false);
@@ -109,36 +135,61 @@ export default function LoginScreen({ onLoginSuccess }) {
     if (!canGuestStart) return;
     try {
       setLoading(true);
-      let res = null;
-      const storedResumeToken = typeof window !== "undefined" ? localStorage.getItem("guest_resume_token") : null;
+      const res = await runWithSingleRetry(
+        async () => {
+          let resumeResponse = null;
+          const storedResumeToken = typeof window !== "undefined" ? localStorage.getItem("guest_resume_token") : null;
 
-      if (storedResumeToken) {
-        try {
-          res = await api.post("/auth/guest/resume", { resume_token: storedResumeToken });
-        } catch (resumeError) {
-          console.warn("기존 비회원 세션 복구 실패:", resumeError);
-          const status = resumeError?.response?.status;
-          if (status === 401 || status === 404) {
-            if (typeof window !== "undefined") {
-              localStorage.removeItem("guest_resume_token");
+          if (storedResumeToken) {
+            try {
+              resumeResponse = await api.post("/auth/guest/resume", { resume_token: storedResumeToken });
+            } catch (resumeError) {
+              console.warn("기존 비회원 세션 복구 실패:", resumeError);
+              const status = resumeError?.response?.status;
+              if (status === 401 || status === 404) {
+                if (typeof window !== "undefined") {
+                  localStorage.removeItem("guest_resume_token");
+                }
+              } else {
+                throw resumeError;
+              }
             }
-          } else {
-            throw resumeError;
           }
-        }
-      }
 
-      if (!res) {
-        res = await api.post("/auth/guest");
-      }
+          if (resumeResponse) {
+            return resumeResponse;
+          }
+
+          return api.post("/auth/guest");
+        },
+        {
+          beforeRetry: async () => {
+            await warmServer();
+            showToast({
+              tone: "info",
+              message: "비회원 계정을 다시 연결하는 중입니다.",
+              placement: "center",
+              duration: 1500,
+            });
+          },
+        },
+      );
 
       const { access_token, user_id, username: accountName, account_type, guest_resume_token } = res.data;
+      const storedResumeToken = typeof window !== "undefined" ? localStorage.getItem("guest_resume_token") : null;
       const resumed = Boolean(storedResumeToken && res?.config?.url?.includes("/guest/resume"));
-      showToast({ tone: "success", message: resumed ? "이전 비회원 계정으로 이어서 시작합니다." : "비회원 계정이 생성되었습니다.", placement: "center", duration: 1600 });
+      showToast({
+        tone: "success",
+        message: resumed ? "이전에 사용하던 비회원 계정으로 다시 연결되었습니다." : "비회원 계정이 생성되었습니다.",
+        placement: "center",
+        duration: 1600,
+      });
       onLoginSuccess(access_token, accountName, user_id, account_type || "guest", guest_resume_token);
     } catch (error) {
       console.error("비회원 시작 오류:", error);
-      const message = error?.code === "ECONNABORTED" ? "서버를 준비하는 중입니다. 잠시 후 다시 시도해주세요." : "비회원 시작에 실패했습니다. 다시 시도해주세요.";
+      const message = isRetryableRequestError(error)
+        ? "서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요."
+        : "비회원으로 시작하지 못했습니다. 다시 시도해주세요.";
       showToast({ tone: "error", message });
     } finally {
       setLoading(false);
@@ -237,7 +288,7 @@ export default function LoginScreen({ onLoginSuccess }) {
               disabled={loading}
             >
               <span className="text-base font-bold">비회원으로 시작하기</span>
-              <span className="mt-1 text-sm text-subtext-light">같은 기기에서는 자동으로 이어서 사용할 수 있지만, 앱 삭제나 기기 변경 시 데이터 복구가 어려울 수 있습니다.</span>
+              <span className="mt-1 text-sm text-subtext-light">같은 기기에서는 이어서 사용할 수 있지만, 앱 삭제나 기기 변경 시 데이터 복구가 어려울 수 있습니다.</span>
             </button>
 
             <button
@@ -261,8 +312,8 @@ export default function LoginScreen({ onLoginSuccess }) {
             <span className="material-symbols-outlined text-4xl">shield_person</span>
           </div>
           <h1 className="text-3xl font-bold">서비스 이용 동의</h1>
-          <p className="mt-3 text-base text-subtext-light">앱을 사용하려면 아래 내용을 확인하고 동의해주세요.</p>
-          {serverWarming ? <p className="mt-2 text-sm font-medium text-primary">서버 연결을 준비하는 중입니다. 첫 실행 시 잠시 걸릴 수 있습니다.</p> : null}
+          <p className="mt-3 text-base text-subtext-light">앱을 사용하려면 아래 안내를 확인하고 동의해주세요.</p>
+          {serverWarming ? <p className="mt-2 text-sm font-medium text-primary">서버를 연결하는 중입니다...</p> : null}
         </div>
 
         <section className="rounded-3xl border border-border-light bg-surface-light p-5 shadow-card">
@@ -274,7 +325,7 @@ export default function LoginScreen({ onLoginSuccess }) {
               className="mt-1 h-5 w-5 rounded border-border-light text-primary focus:ring-primary"
             />
             <span className="text-sm leading-6 text-text-light">
-              차량 관리 서비스 이용과 개인정보 처리, 비회원 시작 시 데이터 복구 제한 내용을 이해했고 이에 동의합니다.
+              차량 관리 서비스 이용과 개인정보 처리, 비회원 시작 시 데이터 복구 제한 내용을 이해하고 이에 동의합니다.
             </span>
           </label>
 
@@ -290,9 +341,7 @@ export default function LoginScreen({ onLoginSuccess }) {
                 >
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-semibold text-text-light">{item.title}</p>
-                    <span className="material-symbols-outlined text-subtext-light">
-                      {isOpen ? "expand_less" : "expand_more"}
-                    </span>
+                    <span className="material-symbols-outlined text-subtext-light">{isOpen ? "expand_less" : "expand_more"}</span>
                   </div>
                   {isOpen ? <p className="mt-3 text-sm leading-6 text-subtext-light">{item.body}</p> : null}
                 </button>
@@ -301,8 +350,8 @@ export default function LoginScreen({ onLoginSuccess }) {
           </div>
 
           <div className="mt-4 rounded-2xl border border-border-light bg-background-light px-4 py-4 text-sm leading-6 text-subtext-light">
-            개인정보처리방침은 <DocLinkButton label="여기" onClick={() => setActiveDoc("privacy")} />를 클릭해 바로 확인할 수 있습니다.
-            백업 및 복구 정책은 <DocLinkButton label="여기" onClick={() => setActiveDoc("backup")} />를 클릭해주세요.
+            개인정보처리방침은 <DocLinkButton label="여기" onClick={() => setActiveDoc("privacy")} />를 눌러 확인할 수 있습니다.
+            백업 및 복구 정책은 <DocLinkButton label="여기" onClick={() => setActiveDoc("backup")} />를 눌러 확인해주세요.
           </div>
         </section>
 

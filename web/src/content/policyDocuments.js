@@ -3,6 +3,7 @@ export const APP_NAME = "내차수첩";
 export const PUBLIC_POLICY_URLS = {
   privacy: "https://carcare-project.onrender.com/privacy-policy",
   backup: "https://carcare-project.onrender.com/backup-recovery-policy",
+  accountDeletion: "https://carcare-project.onrender.com/account-deletion",
 };
 
 export const POLICY_DOCUMENTS = {
