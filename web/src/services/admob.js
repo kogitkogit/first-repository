@@ -4,7 +4,6 @@ import { getAdMobPlatformConfig, isUsingTestAds } from "../config/admob";
 
 let initPromise = null;
 let bannerVisible = false;
-let lastConsentInfo = null;
 let bannerSizeListener = null;
 let bannerInset = 0;
 const bannerInsetSubscribers = new Set();
@@ -60,7 +59,7 @@ export function getBannerInset() {
 
 export async function initializeAdMob() {
   if (!isAdMobSupported()) {
-    return { enabled: false, canRequestAds: false, consentInfo: null };
+    return { enabled: false, canRequestAds: false };
   }
 
   ensureBannerSizeListener();
@@ -76,21 +75,9 @@ export async function initializeAdMob() {
         maxAdContentRating: MaxAdContentRating.General,
       });
 
-      let consentInfo = await AdMob.requestConsentInfo({
-        tagForUnderAgeOfConsent: false,
-        testDeviceIdentifiers: parseTestDeviceIds(),
-      });
-
-      if (!consentInfo.canRequestAds && consentInfo.isConsentFormAvailable) {
-        consentInfo = await AdMob.showConsentForm();
-      }
-
-      lastConsentInfo = consentInfo;
-
       return {
         enabled: true,
-        canRequestAds: Boolean(consentInfo?.canRequestAds),
-        consentInfo,
+        canRequestAds: true,
       };
     })().catch((error) => {
       initPromise = null;
@@ -130,23 +117,4 @@ export async function hideDashboardBanner() {
   await AdMob.removeBanner();
   bannerVisible = false;
   notifyBannerInset(0);
-}
-
-export function getCachedConsentInfo() {
-  return lastConsentInfo;
-}
-
-export function isPrivacyOptionsRequired() {
-  return lastConsentInfo?.privacyOptionsRequirementStatus === "REQUIRED";
-}
-
-export async function openAdPrivacyOptions() {
-  if (!isAdMobSupported()) return false;
-  await initializeAdMob();
-  await AdMob.showPrivacyOptionsForm();
-  lastConsentInfo = await AdMob.requestConsentInfo({
-    tagForUnderAgeOfConsent: false,
-    testDeviceIdentifiers: parseTestDeviceIds(),
-  });
-  return true;
 }
