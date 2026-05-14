@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect } from "react";
 import api from "../api/client";
 import ConfirmDialog from "./ui/ConfirmDialog";
+import { useToast } from "./ui/ToastProvider";
 
 const FUEL_TYPE_OPTIONS = [
   { value: "gasoline", label: "휘발유" },
@@ -15,6 +16,7 @@ const fuelTypeLabel = (value) => FUEL_TYPE_OPTIONS.find((option) => option.value
 const makerCache = { domestic: null, abroad: null };
 
 export default function VehicleSelectScreen({ vehicles, loading = false, loaded = false, error: listError = "", onRetry, onSelect, onCreated, onDeleted, userId }) {
+  const { showToast } = useToast();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     plate_no: "",
@@ -137,10 +139,12 @@ export default function VehicleSelectScreen({ vehicles, loading = false, loaded 
         displacement_cc: "",
         owner_name: "",
       });
+      showToast({ tone: "success", message: "차량이 등록되었습니다.", placement: "center", duration: 1800 });
       onCreated?.(createdVehicleId);
     } catch (err) {
       console.error("차량 등록 오류:", err);
       setError("차량 등록 중 문제가 발생했습니다. 입력값을 확인해주세요.");
+      showToast({ tone: "error", message: "차량을 등록하지 못했습니다.", placement: "center", duration: 1800 });
     } finally {
       setSubmitting(false);
     }
@@ -155,11 +159,13 @@ export default function VehicleSelectScreen({ vehicles, loading = false, loaded 
       const deletedVehicleId = pendingDelete.id;
       await api.delete(`/vehicles/${pendingDelete.id}`);
       setPendingDelete(null);
+      showToast({ tone: "success", message: "차량이 삭제되었습니다.", placement: "center", duration: 1800 });
       onDeleted?.(deletedVehicleId);
     } catch (err) {
       console.error("차량 삭제 오류:", err);
       setError("차량 삭제 중 문제가 발생했습니다. 다시 시도해주세요.");
       setPendingDelete(null);
+      showToast({ tone: "error", message: "차량을 삭제하지 못했습니다.", placement: "center", duration: 1800 });
     }
   };
 
@@ -193,7 +199,7 @@ export default function VehicleSelectScreen({ vehicles, loading = false, loaded 
           </div>
           <div className="space-y-1">
             <p className="text-base font-semibold text-text-light">차량 목록을 불러오는 중입니다</p>
-            <p className="text-sm text-subtext-light">서버 상태에 따라 몇 초 정도 걸릴 수 있습니다.</p>
+            <p className="text-sm text-subtext-light">서버 상태에 따라 몇 초 정도 걸릴 수 있으며, 연결이 느리면 자동으로 한 번 더 시도합니다.</p>
           </div>
         </div>
       );
