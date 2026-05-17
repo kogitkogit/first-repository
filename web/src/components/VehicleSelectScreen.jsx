@@ -33,49 +33,57 @@ export default function VehicleSelectScreen({ vehicles, loading = false, loaded 
   const [models, setModels] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [makersLoading, setMakersLoading] = useState(false);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelReloadKey, setModelReloadKey] = useState(0);
   const [error, setError] = useState("");
+  const [makersError, setMakersError] = useState("");
+  const [modelsError, setModelsError] = useState("");
   const [pendingDelete, setPendingDelete] = useState(null);
+
+  const loadMakers = async (activeGuard = { active: true }) => {
+    if (makerCache.domestic && makerCache.abroad) {
+      setDomesticMakers(makerCache.domestic);
+      setAbroadMakers(makerCache.abroad);
+      setMakersError("");
+      return;
+    }
+
+    setMakersLoading(true);
+    setMakersError("");
+    try {
+      const [domesticRes, abroadRes] = await Promise.all([api.get("/vehicles/makers/domestic"), api.get("/vehicles/makers/abroad")]);
+      const domestic = Array.isArray(domesticRes.data) ? domesticRes.data : domesticRes.data?.makers || [];
+      const abroad = Array.isArray(abroadRes.data) ? abroadRes.data : abroadRes.data?.makers || [];
+      makerCache.domestic = domestic;
+      makerCache.abroad = abroad;
+      if (!activeGuard.active) return;
+      setDomesticMakers(domestic);
+      setAbroadMakers(abroad);
+    } catch (_) {
+      if (!activeGuard.active) return;
+      setMakersError("제조사 목록을 불러오지 못했습니다.");
+    } finally {
+      if (activeGuard.active) {
+        setMakersLoading(false);
+      }
+    }
+  };
 
   useEffect(() => {
     if (!open) return undefined;
-    let active = true;
+    const activeGuard = { active: true };
 
-    const loadMakers = async () => {
-      if (makerCache.domestic && makerCache.abroad) {
-        setDomesticMakers(makerCache.domestic);
-        setAbroadMakers(makerCache.abroad);
-        return;
-      }
-
-      setMakersLoading(true);
-      try {
-        const [domesticRes, abroadRes] = await Promise.all([api.get("/vehicles/makers/domestic"), api.get("/vehicles/makers/abroad")]);
-        const domestic = Array.isArray(domesticRes.data) ? domesticRes.data : domesticRes.data?.makers || [];
-        const abroad = Array.isArray(abroadRes.data) ? abroadRes.data : abroadRes.data?.makers || [];
-        makerCache.domestic = domestic;
-        makerCache.abroad = abroad;
-        if (!active) return;
-        setDomesticMakers(domestic);
-        setAbroadMakers(abroad);
-      } catch (_) {
-        if (!active) return;
-        setError("제조사 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
-      } finally {
-        if (active) {
-          setMakersLoading(false);
-        }
-      }
-    };
-
-    loadMakers();
+    loadMakers(activeGuard);
 
     return () => {
-      active = false;
+      activeGuard.active = false;
     };
   }, [open]);
 
   useEffect(() => {
     if (form.maker) {
+      setModelsLoading(true);
+      setModelsError("");
       const makerParam = encodeURIComponent(form.maker);
       const url =
         form.makerType === "domestic"
@@ -86,6 +94,7 @@ export default function VehicleSelectScreen({ vehicles, loading = false, loaded 
         .then((res) => {
           const modelsData = Array.isArray(res.data) ? res.data : res.data?.models || [];
           setModels(modelsData);
+          setModelsError("");
           if (form.model) {
             const selected = modelsData.find((m) => (m.name ?? m.value) === form.model);
             if (selected && selected.displacement_cc) {
@@ -93,11 +102,19 @@ export default function VehicleSelectScreen({ vehicles, loading = false, loaded 
             }
           }
         })
-        .catch(() => {});
+        .catch(() => {
+          setModels([]);
+          setModelsError("모델 목록을 불러오지 못했습니다.");
+        })
+        .finally(() => {
+          setModelsLoading(false);
+        });
     } else {
       setModels([]);
+      setModelsLoading(false);
+      setModelsError("");
     }
-  }, [form.maker, form.makerType]);
+  }, [form.maker, form.makerType, modelReloadKey]);
 
   useEffect(() => {
     if (form.model && models.length) {
@@ -347,13 +364,26 @@ export default function VehicleSelectScreen({ vehicles, loading = false, loaded 
                     </select>
                   </label>
                 </div>
+                {makersLoading ? <p className="text-sm text-subtext-light">제조사 정보를 불러오는 중입니다...</p> : null}
+                {makersError ? (
+                  <div className="rounded-xl border border-status-warning/30 bg-status-warning/5 px-4 py-3">
+                    <p className="text-sm font-medium text-status-warning">{makersError}</p>
+                    <button
+                      type="button"
+                      className="mt-2 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white transition hover:bg-primary/90"
+                      onClick={() => loadMakers({ active: true })}
+                    >
+                      제조사 다시 불러오기
+                    </button>
+                  </div>
+                ) : null}
 
                 <label className="flex flex-col gap-2">
                   <span className="text-sm font-medium">모델</span>
                   <select
                     value={form.model}
                     onChange={(e) => setForm({ ...form, model: e.target.value })}
-                    disabled={!form.maker || makersLoading}
+                    disabled={!form.maker || makersLoading || modelsLoading}
                     className="h-12 rounded-lg border border-border-light bg-surface-light px-3 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:bg-gray-100"
                   >
                     <option value="">선택</option>
@@ -369,6 +399,19 @@ export default function VehicleSelectScreen({ vehicles, loading = false, loaded 
                     })}
                   </select>
                 </label>
+                {modelsLoading ? <p className="text-sm text-subtext-light">모델 정보를 불러오는 중입니다...</p> : null}
+                {modelsError ? (
+                  <div className="rounded-xl border border-status-warning/30 bg-status-warning/5 px-4 py-3">
+                    <p className="text-sm font-medium text-status-warning">{modelsError}</p>
+                    <button
+                      type="button"
+                      className="mt-2 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white transition hover:bg-primary/90"
+                      onClick={() => setModelReloadKey((prev) => prev + 1)}
+                    >
+                      모델 다시 불러오기
+                    </button>
+                  </div>
+                ) : null}
 
                 <label className="flex flex-col gap-2">
                   <span className="text-sm font-medium">연료 타입</span>
@@ -384,8 +427,6 @@ export default function VehicleSelectScreen({ vehicles, loading = false, loaded 
                     ))}
                   </select>
                 </label>
-
-                {makersLoading ? <p className="text-sm text-subtext-light">제조사 정보를 불러오는 중입니다...</p> : null}
 
                 <div className="grid grid-cols-2 gap-3">
                   <label className="flex flex-col gap-2">
