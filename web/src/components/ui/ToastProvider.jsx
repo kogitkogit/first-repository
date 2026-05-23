@@ -20,7 +20,7 @@ function toneClasses(tone) {
 function wrapperClasses(placement) {
   return placement === "center"
     ? "pointer-events-none fixed left-1/2 top-1/2 z-[100] flex -translate-x-1/2 -translate-y-1/2 items-center justify-center px-4"
-    : "pointer-events-none fixed inset-x-0 top-4 z-[100] flex flex-col items-center gap-2 px-4";
+    : "pointer-events-none fixed inset-x-0 z-[100] flex flex-col items-center gap-2 px-4";
 }
 
 function cardClasses(placement) {
@@ -60,7 +60,15 @@ export function ToastProvider({ children }) {
     <ToastContext.Provider value={value}>
       {children}
       {toasts.map((toast) => (
-        <div key={toast.id} className={wrapperClasses(toast.placement)}>
+        <div
+          key={toast.id}
+          className={wrapperClasses(toast.placement)}
+          style={
+            toast.placement === "center"
+              ? undefined
+              : { top: "calc(env(safe-area-inset-top, 0px) + 16px)" }
+          }
+        >
           <div className={`${cardClasses(toast.placement)} ${toneClasses(toast.tone)}`}>
             <p className="text-sm font-medium">{toast.message}</p>
             {toast.placement === "center" ? null : (
