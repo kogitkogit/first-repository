@@ -1,10 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api from "../api/client";
 import { useToast } from "./ui/ToastProvider";
 import DocumentModal from "./ui/DocumentModal";
 import { APP_NAME, POLICY_DOCUMENTS } from "../content/policyDocuments";
 
-export default function RegisterScreen({ onBack, onRegisterSuccess }) {
+export default function RegisterScreen({ onBack, onRegisterSuccess, onBusyChange }) {
   const { showToast } = useToast();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -21,6 +21,19 @@ export default function RegisterScreen({ onBack, onRegisterSuccess }) {
 
   const requiredChecked = agreements.terms && agreements.privacy;
   const activeContent = useMemo(() => (activeAgreement ? POLICY_DOCUMENTS[activeAgreement] : null), [activeAgreement]);
+
+  useEffect(() => {
+    if (!onBusyChange) return;
+    if (loading) {
+      onBusyChange({
+        open: true,
+        title: "계정을 생성하는 중입니다",
+        message: "입력한 계정 정보를 서버에 저장하고 있습니다.",
+      });
+      return;
+    }
+    onBusyChange({ open: false, title: "", message: "" });
+  }, [loading, onBusyChange]);
 
   const toggleAgreement = (key) => {
     if (key === "all") {

@@ -18,6 +18,7 @@ import CostManagementPanel from "./components/CostManagementPanel";
 import SettingsPanel from "./components/SettingsPanel";
 import TasksPanel from "./components/TasksPanel";
 import InitialSetupGuide from "./components/InitialSetupGuide";
+import GlobalLoadingOverlay from "./components/ui/GlobalLoadingOverlay";
 import { getBannerInset, isAdMobSupported, subscribeBannerInset } from "./services/admob";
 import { runWithSingleRetry } from "./utils/networkRetry";
 
@@ -99,6 +100,7 @@ export default function App() {
   const [legalSummary, setLegalSummary] = useState(mapLegalSummary(null));
   const [costRefreshKey, setCostRefreshKey] = useState(0);
   const [bannerInset, setBannerInset] = useState(() => (isAdMobSupported() ? getBannerInset() : 0));
+  const [authOverlay, setAuthOverlay] = useState({ open: false, title: "", message: "" });
 
   const triggerCostRefresh = useCallback(() => {
     setCostRefreshKey((prev) => prev + 1);
@@ -273,35 +275,55 @@ export default function App() {
 
   if (!authReady) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background-light text-text-light">
-        <span className="text-sm text-subtext-light">세션을 확인하는 중...</span>
+      <div className="min-h-screen bg-background-light text-text-light">
+        <GlobalLoadingOverlay
+          open
+          title="앱을 준비하는 중입니다"
+          message="저장된 세션 정보를 확인하고 있습니다."
+        />
       </div>
     );
   }
 
   if (!token) {
-    return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
+    return (
+      <>
+        <LoginScreen onLoginSuccess={handleLoginSuccess} onBusyChange={setAuthOverlay} />
+        <GlobalLoadingOverlay
+          open={authOverlay.open}
+          title={authOverlay.title}
+          message={authOverlay.message}
+        />
+      </>
+    );
   }
 
   return (
-    <AppShell
-      vehicles={vehicles}
-      vehiclesLoading={vehiclesLoading}
-      vehiclesLoaded={vehiclesLoaded}
-      vehiclesError={vehiclesError}
-      selectedVehicle={selectedVehicle}
-      setSelectedVehicle={setSelectedVehicle}
-      fetchVehicles={fetchVehicles}
-      refreshVehicle={refreshVehicle}
-      userId={userId}
-      username={username}
-      accountType={accountType}
-      legalSummary={legalSummary}
-      onLogout={handleLogout}
-      costRefreshKey={costRefreshKey}
-      onCostRefresh={triggerCostRefresh}
-      bannerInset={bannerInset}
-    />
+    <>
+      <AppShell
+        vehicles={vehicles}
+        vehiclesLoading={vehiclesLoading}
+        vehiclesLoaded={vehiclesLoaded}
+        vehiclesError={vehiclesError}
+        selectedVehicle={selectedVehicle}
+        setSelectedVehicle={setSelectedVehicle}
+        fetchVehicles={fetchVehicles}
+        refreshVehicle={refreshVehicle}
+        userId={userId}
+        username={username}
+        accountType={accountType}
+        legalSummary={legalSummary}
+        onLogout={handleLogout}
+        costRefreshKey={costRefreshKey}
+        onCostRefresh={triggerCostRefresh}
+        bannerInset={bannerInset}
+      />
+      <GlobalLoadingOverlay
+        open={vehiclesLoading && !vehiclesLoaded}
+        title="차량 정보를 불러오는 중입니다"
+        message="저장된 차량과 관리 데이터를 확인하고 있습니다."
+      />
+    </>
   );
 }
 

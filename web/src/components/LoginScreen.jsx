@@ -35,7 +35,7 @@ function DocLinkButton({ label, onClick }) {
   );
 }
 
-export default function LoginScreen({ onLoginSuccess }) {
+export default function LoginScreen({ onLoginSuccess, onBusyChange }) {
   const { showToast } = useToast();
   const [mode, setMode] = useState("consent");
   const [agreed, setAgreed] = useState(false);
@@ -75,6 +75,30 @@ export default function LoginScreen({ onLoginSuccess }) {
 
   const canGuestStart = useMemo(() => agreed, [agreed]);
   const activeDocument = activeDoc ? POLICY_DOCUMENTS[activeDoc] : null;
+
+  useEffect(() => {
+    if (!onBusyChange) return;
+
+    if (serverWarming) {
+      onBusyChange({
+        open: true,
+        title: "서버에 연결하는 중입니다",
+        message: "앱 실행에 필요한 서버 상태를 확인하고 있습니다.",
+      });
+      return;
+    }
+
+    if (loading) {
+      onBusyChange({
+        open: true,
+        title: "요청을 처리하는 중입니다",
+        message: "계정 정보를 확인하고 있습니다.",
+      });
+      return;
+    }
+
+    onBusyChange({ open: false, title: "", message: "" });
+  }, [loading, onBusyChange, serverWarming]);
 
   const warmServer = async () => {
     try {
@@ -197,7 +221,7 @@ export default function LoginScreen({ onLoginSuccess }) {
   };
 
   if (mode === "register") {
-    return <RegisterScreen onBack={() => setMode("choice")} onRegisterSuccess={onLoginSuccess} />;
+    return <RegisterScreen onBack={() => setMode("choice")} onRegisterSuccess={onLoginSuccess} onBusyChange={onBusyChange} />;
   }
 
   if (mode === "login") {
