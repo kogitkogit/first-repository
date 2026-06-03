@@ -5,10 +5,10 @@ import { useToast } from "./ui/ToastProvider";
 import { DATE_ERROR_MESSAGE, validatePastOrToday, todayYmd } from "../utils/dateValidation";
 
 const RANGE_FILTERS = [
-  { key: "1m", label: "최근 1개월", months: 1 },
-  { key: "3m", label: "최근 3개월", months: 3 },
-  { key: "6m", label: "최근 6개월", months: 6 },
-  { key: "12m", label: "최근 1년", months: 12 },
+  { key: "1m", label: "1개월", months: 1 },
+  { key: "3m", label: "3개월", months: 3 },
+  { key: "6m", label: "6개월", months: 6 },
+  { key: "12m", label: "1년", months: 12 },
   { key: "all", label: "전체", months: null },
 ];
 
@@ -23,6 +23,8 @@ const ENERGY_MODE = {
 
 const INPUT_CLASS =
   "block w-full rounded-xl border border-border-light bg-background-light px-3 py-2 text-sm text-text-light placeholder:text-subtext-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30";
+const FILTER_SCROLL_CLASS = "flex items-center gap-1.5 overflow-x-auto whitespace-nowrap pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
+const RANGE_FILTER_BUTTON_CLASS = "shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold leading-none";
 
 const money = (value) => `${Number(value || 0).toLocaleString()} 원`;
 
@@ -182,7 +184,7 @@ function DetailModal({ title, onClose, onEdit, onDelete, rows }) {
 export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
   const { showToast } = useToast();
   const [tab, setTab] = useState("fuel");
-  const [rangeKey, setRangeKey] = useState("3m");
+  const [rangeKey, setRangeKey] = useState("all");
   const [onlyFull, setOnlyFull] = useState(false);
   const [fuelRecords, setFuelRecords] = useState([]);
   const [chargeRecords, setChargeRecords] = useState([]);
@@ -403,9 +405,9 @@ export default function FuelPanel({ vehicle, onCostDataChanged = () => {} }) {
       </section>
 
       <section className="rounded-2xl border border-border-light bg-surface-light p-4 shadow-card">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className={FILTER_SCROLL_CLASS}>
           {RANGE_FILTERS.map((item) => (
-            <button key={item.key} type="button" className={`rounded-full px-3 py-1 text-sm font-semibold ${rangeKey === item.key ? "bg-primary text-white" : "border border-border-light text-subtext-light"}`} onClick={() => setRangeKey(item.key)}>
+            <button key={item.key} type="button" className={`${RANGE_FILTER_BUTTON_CLASS} ${rangeKey === item.key ? "bg-primary text-white" : "border border-border-light text-subtext-light"}`} onClick={() => setRangeKey(item.key)}>
               {item.label}
             </button>
           ))}

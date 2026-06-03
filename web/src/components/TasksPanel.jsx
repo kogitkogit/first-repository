@@ -6,6 +6,11 @@ import { summarizeConsumableDue, summarizeLegalDue, summarizeTireDue } from "./D
 
 const TONE_PRIORITY = { danger: 0, warn: 1, muted: 2, ok: 3 };
 
+function hasEnteredOdometer(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0;
+}
+
 function badgeClass(tone) {
   if (tone === "danger") return "bg-red-100 text-red-700";
   if (tone === "warn") return "bg-amber-100 text-amber-700";
@@ -58,7 +63,7 @@ export default function TasksPanel({ vehicle, legalSummary = {} }) {
           api.get("/fuel/stats", { params: { vehicleId: vehicle.id } }),
           api.get("/odometer/current", { params: { vehicleId: vehicle.id } }),
         ]);
-        const odo = odoRes.data?.odo_km ?? vehicle?.odo_km ?? null;
+        const odo = odoRes.data?.odo_km ?? null;
         const [consumableDue, tireDue] = await Promise.all([
           summarizeConsumableDue(vehicle.id, odo),
           summarizeTireDue(vehicle.id),
@@ -87,7 +92,7 @@ export default function TasksPanel({ vehicle, legalSummary = {} }) {
       {
         key: "odometer",
         label: "현재 주행거리 입력",
-        done: currentOdo != null,
+        done: hasEnteredOdometer(currentOdo),
         actionLabel: "대시보드 열기",
         action: () => navigate("/", { state: { openOdo: true } }),
       },
@@ -140,7 +145,7 @@ export default function TasksPanel({ vehicle, legalSummary = {} }) {
   const inputNeededItems = useMemo(() => {
     const items = [...dueItems.filter((item) => item.tone === "muted")];
 
-    if (currentOdo == null) {
+    if (!hasEnteredOdometer(currentOdo)) {
       items.unshift({
         id: "missing-odometer",
         area: "대시보드",
@@ -212,16 +217,14 @@ export default function TasksPanel({ vehicle, legalSummary = {} }) {
               <span>미완료</span>
               <span className="mt-1">{setupItems.filter((item) => !item.done).length}건</span>
             </span>
-            {allSetupDone ? (
-              <button
-                type="button"
-                className="flex h-8 w-8 items-center justify-center rounded-full border border-border-light text-subtext-light transition hover:text-primary"
-                onClick={() => setSetupCollapsed((prev) => !prev)}
-                aria-label={setupCollapsed ? "초기 설정 펼치기" : "초기 설정 접기"}
-              >
-                <span className="material-symbols-outlined text-base">{setupCollapsed ? "expand_more" : "expand_less"}</span>
-              </button>
-            ) : null}
+            <button
+              type="button"
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-border-light text-subtext-light transition hover:text-primary"
+              onClick={() => setSetupCollapsed((prev) => !prev)}
+              aria-label={setupCollapsed ? "초기 설정 펼치기" : "초기 설정 접기"}
+            >
+              <span className="material-symbols-outlined text-base">{setupCollapsed ? "expand_more" : "expand_less"}</span>
+            </button>
           </div>
         </div>
 
@@ -248,7 +251,9 @@ export default function TasksPanel({ vehicle, legalSummary = {} }) {
           </div>
         ) : (
           <div className="mt-4 rounded-2xl border border-border-light bg-background-light px-4 py-3 text-sm text-subtext-light">
-            초기 설정이 모두 완료되었습니다.
+            {allSetupDone
+              ? "초기 설정이 모두 완료되었습니다."
+              : `초기 설정 ${setupItems.filter((item) => !item.done).length}개 항목이 아직 남아 있습니다. 필요할 때 다시 펼쳐서 입력하세요.`}
           </div>
         )}
       </section>

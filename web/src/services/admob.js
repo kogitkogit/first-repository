@@ -7,6 +7,7 @@ let bannerVisible = false;
 let bannerSizeListener = null;
 let bannerInset = 0;
 const bannerInsetSubscribers = new Set();
+const BANNER_BOTTOM_MARGIN = 36;
 
 function getPlatform() {
   return Capacitor.getPlatform();
@@ -41,7 +42,7 @@ function ensureBannerSizeListener() {
   if (bannerSizeListener || !isAdMobSupported()) return;
   bannerSizeListener = AdMob.addListener(BannerAdPluginEvents.SizeChanged, (info) => {
     const height = Number(info?.height || 0);
-    notifyBannerInset(height > 0 ? height : 0);
+    notifyBannerInset(height > 0 ? height + BANNER_BOTTOM_MARGIN : 0);
   });
 }
 
@@ -104,7 +105,7 @@ export async function showDashboardBanner() {
     adId: config.bannerId,
     adSize: BannerAdSize.ADAPTIVE_BANNER,
     position: BannerAdPosition.BOTTOM_CENTER,
-    margin: 0,
+    margin: BANNER_BOTTOM_MARGIN,
     isTesting: isUsingTestAds(platform),
   });
 

@@ -10,10 +10,10 @@ const SERVICE_FILTERS = [
 ];
 
 const RANGE_FILTERS = [
-  { key: "1m", label: "최근 1개월", months: 1 },
-  { key: "3m", label: "최근 3개월", months: 3 },
-  { key: "6m", label: "최근 6개월", months: 6 },
-  { key: "12m", label: "최근 1년", months: 12 },
+  { key: "1m", label: "1개월", months: 1 },
+  { key: "3m", label: "3개월", months: 3 },
+  { key: "6m", label: "6개월", months: 6 },
+  { key: "12m", label: "1년", months: 12 },
   { key: "all", label: "전체", months: null },
 ];
 
@@ -39,6 +39,8 @@ const PRIMARY_BUTTON =
   "inline-flex w-full items-center justify-center rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-primary/90 disabled:opacity-60";
 const SECONDARY_BUTTON =
   "inline-flex w-full items-center justify-center rounded-xl border border-border-light bg-white px-4 py-2 text-sm font-semibold text-subtext-light transition hover:bg-background-light disabled:opacity-60";
+const FILTER_SCROLL_CLASS = "flex items-center gap-1.5 overflow-x-auto whitespace-nowrap pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
+const RANGE_FILTER_BUTTON_CLASS = "shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold leading-none transition";
 
 const defaultForm = (vehicle) => ({
   service_date: new Date().toISOString().slice(0, 10),
@@ -161,7 +163,7 @@ export default function MaintenancePanel({ vehicle }) {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
   const [serviceType, setServiceType] = useState("all");
-  const [rangeFilter, setRangeFilter] = useState("3m");
+  const [rangeFilter, setRangeFilter] = useState("all");
   const [sortOption, setSortOption] = useState("recent");
   const [search, setSearch] = useState("");
   const [minCost, setMinCost] = useState("");
@@ -352,7 +354,7 @@ export default function MaintenancePanel({ vehicle }) {
 
   const handleResetFilters = () => {
     setServiceType("all");
-    setRangeFilter("3m");
+    setRangeFilter("all");
     setSortOption("recent");
     setSearch("");
     setMinCost("");
@@ -419,9 +421,9 @@ export default function MaintenancePanel({ vehicle }) {
           <input className="ml-auto min-w-[160px] flex-1 rounded-xl border border-border-light bg-background-light px-3 py-2 text-sm text-text-light" placeholder="정비 항목이나 정비소 검색" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className={FILTER_SCROLL_CLASS}>
           {RANGE_FILTERS.map((filter) => (
-            <button key={filter.key} className={`rounded-full px-3 py-1 text-xs font-semibold transition ${rangeFilter === filter.key ? "bg-text-light text-white" : "border border-border-light text-subtext-light"}`} onClick={() => setRangeFilter(filter.key)}>
+            <button key={filter.key} className={`${RANGE_FILTER_BUTTON_CLASS} ${rangeFilter === filter.key ? "bg-text-light text-white" : "border border-border-light text-subtext-light"}`} onClick={() => setRangeFilter(filter.key)}>
               {filter.label}
             </button>
           ))}

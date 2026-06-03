@@ -14,10 +14,10 @@ const POSITIONS = [
 ];
 
 const POSITION_STYLES = {
-  front_left: { top: "12%", left: "-18%" },
-  front_right: { top: "12%", right: "-18%" },
-  rear_left: { bottom: "12%", left: "-18%" },
-  rear_right: { bottom: "12%", right: "-18%" },
+  front_left: { top: "12%", left: "5%" },
+  front_right: { top: "12%", right: "5%" },
+  rear_left: { bottom: "12%", left: "5%" },
+  rear_right: { bottom: "12%", right: "5%" },
 };
 
 const STATUS_RING = {
@@ -482,11 +482,11 @@ export default function TirePanel({ vehicle }) {
         latestMeasurement?.pressure_kpa != null
           ? `${kpaToPsi(latestMeasurement.pressure_kpa).toFixed(1)} PSI`
           : "기록 없음",
-      caption: selectedSummary ? `권장: ${renderPressureRange(selectedSummary)}` : null,
+      caption: null,
     },
     {
       key: "tread",
-      label: "트레드 깊이",
+      label: "트레드",
       icon: "straighten",
       value:
         latestMeasurement?.tread_depth_mm != null
@@ -530,7 +530,7 @@ export default function TirePanel({ vehicle }) {
               <p className="mt-2 text-sm text-subtext-light">
                 아래에서 확인할 타이어를 스와이프하거나 탭하세요.
               </p>
-              <div className="mt-6 relative mx-auto h-64 max-w-xs rounded-[3rem] border border-border-light bg-background-light">
+              <div className="mt-6 relative mx-auto h-64 max-w-xs overflow-hidden rounded-[3rem] border border-border-light bg-background-light">
                 <div className="absolute inset-8 rounded-[2.5rem] bg-border-light/50" />
                 <div className="absolute inset-y-8 left-1/2 w-12 -translate-x-1/2 rounded-full bg-border-light/70" />
                 {POSITIONS.map((pos) => {
@@ -544,16 +544,16 @@ export default function TirePanel({ vehicle }) {
                       type="button"
                       style={POSITION_STYLES[pos.key]}
                       onClick={() => handleSelectedChange(pos.key)}
-                      className={`absolute flex flex-col items-center transition-transform ${isActive ? "scale-125" : "scale-100"}`}
+                      className={`absolute flex flex-col items-center transition-transform ${isActive ? "scale-110" : "scale-100"}`}
                     >
                       <span
-                        className={`flex ${isActive ? "h-16 w-16 border-[5px]" : "h-12 w-12 border-4"} items-center justify-center rounded-full bg-white text-base font-bold text-slate-800 shadow ${ring}`}
+                        className={`flex ${isActive ? "h-14 w-14 border-[5px]" : "h-11 w-11 border-4"} items-center justify-center rounded-full bg-white text-sm font-bold text-slate-800 shadow ${ring}`}
                       >
                         {pos.short}
                       </span>
-                      <span className="mt-1 text-[11px] font-semibold text-text-light">{pos.label}</span>
+                      <span className="mt-1 whitespace-nowrap text-[10px] font-semibold leading-none text-text-light">{pos.label}</span>
                       {item?.last_measurement?.pressure_kpa != null && (
-                        <span className="mt-0.5 text-[10px] text-subtext-light">
+                        <span className="mt-0.5 whitespace-nowrap text-[9px] leading-none text-subtext-light">
                           {kpaToPsi(item.last_measurement.pressure_kpa).toFixed(1)} PSI
                         </span>
                       )}
@@ -579,7 +579,7 @@ export default function TirePanel({ vehicle }) {
                   <button
                     key={stat.key}
                     type="button"
-                    className="rounded-2xl border border-border-light bg-background-light p-4 text-left shadow-sm transition hover:border-primary/40"
+                    className="rounded-2xl border border-border-light bg-background-light p-3 text-left shadow-sm transition hover:border-primary/40"
                     onClick={() => {
                       if (latestMeasurement) {
                         handleMeasurementEdit(latestMeasurement);
@@ -590,12 +590,12 @@ export default function TirePanel({ vehicle }) {
                       }
                     }}
                   >
-                    <div className="flex items-center gap-2 text-subtext-light">
+                    <div className="flex items-center gap-1.5 text-subtext-light">
                       <span className="material-symbols-outlined text-base text-primary">{stat.icon}</span>
-                      <span className="text-xs font-semibold uppercase tracking-wide">{stat.label}</span>
+                      <span className="whitespace-nowrap text-[11px] font-semibold leading-none">{stat.label}</span>
                     </div>
-                    <p className="mt-2 text-xl font-bold text-text-light">{stat.value}</p>
-                    {stat.caption ? <p className="text-xs text-subtext-light">{stat.caption}</p> : null}
+                    <p className="mt-2 whitespace-nowrap text-lg font-bold leading-tight text-text-light">{stat.value}</p>
+                    {stat.caption ? <p className="text-[11px] text-subtext-light">{stat.caption}</p> : null}
                   </button>
                 ))}
               </div>
@@ -926,6 +926,10 @@ export default function TirePanel({ vehicle }) {
             }
           >
             <div className="space-y-3">
+              <div className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
+                <p className="text-xs font-semibold text-primary">권장 공기압</p>
+                <p className="mt-1 font-semibold text-text-light">{renderPressureRange(selectedSummary)}</p>
+              </div>
               <input type="datetime-local" className={INPUT_CLASS} value={measurementForm.measured_at} onChange={(e) => setMeasurementForm((prev) => ({ ...prev, measured_at: e.target.value }))} required />
               <input type="number" step="0.1" className={INPUT_CLASS} placeholder="공기압 (PSI)" value={measurementForm.pressure_kpa} onChange={(e) => setMeasurementForm((prev) => ({ ...prev, pressure_kpa: e.target.value }))} />
               <input type="number" step="0.1" className={INPUT_CLASS} placeholder="트레드 깊이 (mm)" value={measurementForm.tread_depth_mm} onChange={(e) => setMeasurementForm((prev) => ({ ...prev, tread_depth_mm: e.target.value }))} />

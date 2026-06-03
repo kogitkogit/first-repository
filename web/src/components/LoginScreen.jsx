@@ -227,7 +227,13 @@ export default function LoginScreen({ onLoginSuccess, onBusyChange }) {
   if (mode === "login") {
     return (
       <div className="flex min-h-screen flex-col bg-background-light text-text-light">
-        <header className="sticky top-0 z-10 flex h-14 items-center justify-between bg-background-light px-4">
+        <header
+          className="sticky top-0 z-10 flex items-center justify-between bg-background-light px-4"
+          style={{
+            paddingTop: "env(safe-area-inset-top, 0px)",
+            minHeight: "calc(56px + env(safe-area-inset-top, 0px))",
+          }}
+        >
           <button type="button" aria-label="뒤로가기" className="flex h-10 w-10 items-center justify-start text-text-light" onClick={() => setMode("choice")}>
             <span className="material-symbols-outlined text-2xl">arrow_back</span>
           </button>
@@ -278,7 +284,13 @@ export default function LoginScreen({ onLoginSuccess, onBusyChange }) {
   if (mode === "choice") {
     return (
       <div className="flex min-h-screen flex-col bg-background-light text-text-light">
-        <header className="sticky top-0 z-10 flex h-14 items-center justify-between bg-background-light px-4">
+        <header
+          className="sticky top-0 z-10 flex items-center justify-between bg-background-light px-4"
+          style={{
+            paddingTop: "env(safe-area-inset-top, 0px)",
+            minHeight: "calc(56px + env(safe-area-inset-top, 0px))",
+          }}
+        >
           <button type="button" aria-label="뒤로가기" className="flex h-10 w-10 items-center justify-start text-text-light" onClick={() => setMode("consent")}>
             <span className="material-symbols-outlined text-2xl">arrow_back</span>
           </button>

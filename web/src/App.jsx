@@ -29,8 +29,7 @@ const BOTTOM_ROUTES = [
   { key: "costs", label: "비용 관리", icon: "receipt_long", path: "/costs" },
   { key: "settings", label: "설정", icon: "settings", path: "/settings" },
 ];
-const BOTTOM_NAV_HEIGHT = 80;
-const BANNER_GAP = 8;
+const BOTTOM_NAV_HEIGHT = 76;
 const ROUTE_TITLES = {
   "/": "차량 대시보드",
   "/setup-guide": "초기 설정 가이드",
@@ -370,12 +369,19 @@ function AppShell({
     }
   }, [selectedVehicle, location.pathname, navigate]);
 
-  const bottomInset = selectedVehicle ? bannerInset + (bannerInset > 0 ? BANNER_GAP : 0) : 0;
+  const bottomInset = selectedVehicle ? bannerInset : 0;
+  const navSafeAreaStyle =
+    bottomInset > 0
+      ? { minHeight: `${BOTTOM_NAV_HEIGHT}px`, paddingBottom: "0px" }
+      : {
+          minHeight: `calc(${BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom, 0px))`,
+          paddingBottom: "env(safe-area-inset-bottom, 0px)",
+        };
 
   return (
     <div className="relative flex min-h-screen flex-col bg-background-light text-text-light">
       <header
-        className="sticky top-0 z-20 flex items-center justify-between border-b border-border-light bg-background-light/95 px-4 backdrop-blur"
+        className="sticky top-0 z-20 grid grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-2 border-b border-border-light bg-background-light/95 px-3 backdrop-blur"
         style={{
           paddingTop: "env(safe-area-inset-top, 0px)",
           minHeight: "calc(56px + env(safe-area-inset-top, 0px))",
@@ -395,24 +401,24 @@ function AppShell({
             <span className="material-symbols-outlined text-2xl text-subtext-light">menu</span>
           )}
         </div>
-        <h1 className="text-base font-bold text-text-light">{headerTitle}</h1>
-        <div className="flex items-center gap-2">
+        <h1 className="min-w-0 truncate text-sm font-bold leading-tight text-text-light">{headerTitle}</h1>
+        <div className="flex shrink-0 items-center gap-1.5">
           {selectedVehicle ? (
             <button
               type="button"
-              className="flex h-10 items-center gap-2 rounded-full bg-primary/10 px-4 text-sm font-semibold text-primary transition hover:bg-primary/20"
+              className="flex h-10 items-center gap-1.5 whitespace-nowrap rounded-full bg-primary/10 px-3 text-xs font-semibold text-primary transition hover:bg-primary/20"
               onClick={() => {
                 setSelectedVehicle(null);
                 navigate("/");
               }}
             >
               <span className="material-symbols-outlined text-lg">directions_car</span>
-              <span>차량 변경</span>
+              <span>변경</span>
             </button>
           ) : (
             <button
               type="button"
-              className="flex h-10 items-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-white transition hover:bg-primary/90"
+              className="flex h-10 items-center gap-1.5 whitespace-nowrap rounded-full bg-primary px-3 text-xs font-semibold text-white transition hover:bg-primary/90"
               onClick={() => fetchVehicles().catch(() => {})}
             >
               <span className="material-symbols-outlined text-lg text-white">refresh</span>
@@ -421,7 +427,7 @@ function AppShell({
           )}
           <button
             type="button"
-            className="flex h-10 items-center gap-2 rounded-full border border-border-light px-4 text-sm font-semibold text-subtext-light transition hover:text-primary"
+            className="flex h-10 items-center gap-1.5 whitespace-nowrap rounded-full border border-border-light px-3 text-xs font-semibold text-subtext-light transition hover:text-primary"
             onClick={onLogout}
           >
             <span className="material-symbols-outlined text-lg">logout</span>
@@ -431,7 +437,7 @@ function AppShell({
       </header>
       <main
         className="flex-1 overflow-x-hidden"
-        style={{ paddingBottom: `${selectedVehicle ? BOTTOM_NAV_HEIGHT + 16 + bottomInset : BOTTOM_NAV_HEIGHT + 16}px` }}
+        style={{ paddingBottom: `${selectedVehicle ? BOTTOM_NAV_HEIGHT + 12 + bottomInset : BOTTOM_NAV_HEIGHT + 12}px` }}
       >
         {!selectedVehicle ? (
           <div className="h-full px-4 py-6">
@@ -616,7 +622,7 @@ function AppShell({
           </Routes>
         )}
       </main>
-      {selectedVehicle && <BottomNavigation currentPath={location.pathname} navigateTo={navigate} bottomOffset={bottomInset} />}
+      {selectedVehicle && <BottomNavigation currentPath={location.pathname} navigateTo={navigate} bottomOffset={bottomInset} safeAreaStyle={navSafeAreaStyle} />}
     </div>
   );
 }
@@ -629,14 +635,13 @@ function getHeaderTitle(pathname, vehicle) {
   return ROUTE_TITLES[pathname] || "차량 관리";
 }
 
-function BottomNavigation({ currentPath, navigateTo, bottomOffset = 0 }) {
+function BottomNavigation({ currentPath, navigateTo, bottomOffset = 0, safeAreaStyle }) {
   return (
     <nav
       className="fixed left-0 right-0 z-30 flex items-center justify-between border-t border-border-light bg-surface-light/95 px-6 backdrop-blur"
       style={{
         bottom: `${bottomOffset}px`,
-        minHeight: "calc(80px + env(safe-area-inset-bottom, 0px))",
-        paddingBottom: "env(safe-area-inset-bottom, 0px)",
+        ...safeAreaStyle,
       }}
     >
       {BOTTOM_ROUTES.map((item) => {
