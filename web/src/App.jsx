@@ -1,5 +1,7 @@
 ﻿import { useCallback, useEffect, useState } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
+import { App as CapacitorApp } from "@capacitor/app";
+import { Capacitor } from "@capacitor/core";
 import api from "./api/client";
 import VehicleSelectScreen from "./components/VehicleSelectScreen";
 import Dashboard from "./components/Dashboard";
@@ -18,6 +20,7 @@ import CostManagementPanel from "./components/CostManagementPanel";
 import SettingsPanel from "./components/SettingsPanel";
 import TasksPanel from "./components/TasksPanel";
 import InitialSetupGuide from "./components/InitialSetupGuide";
+import ConfirmDialog from "./components/ui/ConfirmDialog";
 import GlobalLoadingOverlay from "./components/ui/GlobalLoadingOverlay";
 import { getBannerInset, isAdMobSupported, subscribeBannerInset } from "./services/admob";
 import { runWithSingleRetry } from "./utils/networkRetry";
@@ -85,6 +88,7 @@ const mapLegalSummary = (data) => {
 
 export default function App() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [token, setToken] = useState(null);
   const [username, setUsername] = useState("");
@@ -100,6 +104,7 @@ export default function App() {
   const [costRefreshKey, setCostRefreshKey] = useState(0);
   const [bannerInset, setBannerInset] = useState(() => (isAdMobSupported() ? getBannerInset() : 0));
   const [authOverlay, setAuthOverlay] = useState({ open: false, title: "", message: "" });
+  const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
 
   const triggerCostRefresh = useCallback(() => {
     setCostRefreshKey((prev) => prev + 1);
@@ -272,6 +277,62 @@ export default function App() {
     });
   }, []);
 
+  const handleExitConfirm = useCallback(async () => {
+    setExitConfirmOpen(false);
+    if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android") {
+      await CapacitorApp.exitApp();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android") return undefined;
+
+    let active = true;
+    const listener = CapacitorApp.addListener("backButton", () => {
+      if (exitConfirmOpen) {
+        handleExitConfirm();
+        return;
+      }
+
+      if (!authReady || !token || !selectedVehicle) {
+        setExitConfirmOpen(true);
+        return;
+      }
+
+      if (location.pathname === "/") {
+        setSelectedVehicle(null);
+        navigate("/");
+        return;
+      }
+
+      if (location.pathname === "/setup-guide" && typeof window !== "undefined") {
+        localStorage.removeItem(`setup-guide-pending:${selectedVehicle.id}`);
+      }
+      navigate("/");
+    });
+
+    return () => {
+      active = false;
+      Promise.resolve(listener).then((handle) => {
+        if (!active) handle?.remove?.();
+      });
+    };
+  }, [authReady, exitConfirmOpen, handleExitConfirm, location.pathname, navigate, selectedVehicle, token]);
+
+  const exitConfirmDialog = (
+    <ConfirmDialog
+      open={exitConfirmOpen}
+      title="앱을 종료하시겠습니까?"
+      description="종료를 누르면 내차수첩이 종료됩니다."
+      confirmLabel="종료"
+      cancelLabel="취소"
+      tone="danger"
+      actionsLayout="horizontal"
+      onConfirm={handleExitConfirm}
+      onCancel={() => setExitConfirmOpen(false)}
+    />
+  );
+
   if (!authReady) {
     return (
       <div className="min-h-screen bg-background-light text-text-light">
@@ -280,6 +341,7 @@ export default function App() {
           title="앱을 준비하는 중입니다"
           message="저장된 세션 정보를 확인하고 있습니다."
         />
+        {exitConfirmDialog}
       </div>
     );
   }
@@ -293,6 +355,7 @@ export default function App() {
           title={authOverlay.title}
           message={authOverlay.message}
         />
+        {exitConfirmDialog}
       </>
     );
   }
@@ -322,6 +385,7 @@ export default function App() {
         title="차량 정보를 불러오는 중입니다"
         message="저장된 차량과 관리 데이터를 확인하고 있습니다."
       />
+      {exitConfirmDialog}
     </>
   );
 }

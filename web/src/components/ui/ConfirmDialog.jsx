@@ -8,6 +8,7 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
   loading = false,
+  actionsLayout = "responsive",
 }) {
   if (!open) return null;
 
@@ -22,7 +23,7 @@ export default function ConfirmDialog({
             <h2 className="text-lg font-semibold text-text-light">{title}</h2>
             {description ? <p className="text-sm text-subtext-light">{description}</p> : null}
           </div>
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <div className={`mt-6 grid gap-3 ${actionsLayout === "horizontal" ? "grid-cols-2" : "sm:grid-cols-2"}`}>
             <button
               type="button"
               className="rounded-xl border border-border-light px-4 py-2 text-sm font-semibold text-subtext-light transition hover:text-primary"
